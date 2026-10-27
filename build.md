@@ -1,0 +1,3 @@
+rm -rf build dist Converter.spec
+
+python -m PyInstaller --noconfirm --clean --windowed --name Converter --icon icon.icns   --add-data ui:ui   --collect-submodules core   --collect-all pymupdf   --collect-all pillow_heif   --collect-all openpyxl   --collect-all xlrd   --exclude-module onnxruntime --exclude-module numpy --exclude-module pandas   --exclude-module matplotlib --exclude-module scipy --exclude-module torch   --exclude-module tkinter   app.py

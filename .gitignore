@@ -1,0 +1,10 @@
+__pycahce__/
+*.рус
+.venv/
+venv/
+build/
+dist/
+*.spec
+.pytest_cache/
+.ruff_cache/
+.DS_Store
