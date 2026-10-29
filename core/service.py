@@ -14,12 +14,7 @@ from PIL import Image
 from core import images
 from core.errors import ConversionError
 from core.pdf_tools import OPERATIONS, preview_split, run_operation
-from core.registry import (
-    CONVERTERS,
-    convert,
-    supported_formats,
-    targets_for,
-)  # noqa: F401 (supported_formats нужен app.py)
+from core.registry import CONVERTERS, convert, supported_formats, targets_for  # noqa: F401 (supported_formats нужен app.py)
 from core.utils import format_size
 
 # что окно вообще имеет право передавать в качестве настроек (все остальное отбрасывается)
