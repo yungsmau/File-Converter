@@ -62,7 +62,7 @@ def test_existing_file_is_not_overwritten(tmp_path, make_xlsx):
     (tmp_path / "t.csv").write_text("не трогать", encoding="utf-8")
     [out] = convert(src, tmp_path / "t.csv", {})
     assert out.name == "t (1).csv"
-    assert (tmp_path / "t.csv").read_text() == "не трогать"
+    assert (tmp_path / "t.csv").read_text(encoding="utf-8") == "не трогать"
 
 
 def test_missing_file_gives_readable_error(tmp_path):
