@@ -59,7 +59,7 @@ def test_formulas_stay_text(tmp_path):
 
 def test_existing_file_is_not_overwritten(tmp_path, make_xlsx):
     src = make_xlsx("t.xlsx", {"Лист1": [["a"], [1]]})
-    (tmp_path / "t.csv").write_text("не трогать")
+    (tmp_path / "t.csv").write_text("не трогать", encoding="utf-8")
     [out] = convert(src, tmp_path / "t.csv", {})
     assert out.name == "t (1).csv"
     assert (tmp_path / "t.csv").read_text() == "не трогать"
