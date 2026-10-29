@@ -88,7 +88,7 @@ def _parse_ranges(spec: str, total: int) -> list[tuple[int, int]]:
                 first = last = int(token)
         except ValueError:
             raise ConversionError(
-                f"непонятный диапазон: '{token}'. Пример: 1-3, 5, 7-"
+                f"Непонятный диапазон: '{token}'. Пример: 1-3, 5, 7-"
             ) from None
         if first > last:
             raise ConversionError(f"В диапазоне '{token}' начало больше конца")
@@ -242,11 +242,11 @@ def run_operation(
 ) -> list[Path]:
     op = OPERATIONS.get(op_id)
     if op is None:
-        raise UnsupportedConversion(f"Неизвестная операций: {op_id}")
+        raise UnsupportedConversion(f"Неизвестная операция: {op_id}")
     if not sources:
         raise ConversionError("Не выбраны файлы")
     if not op.multi and len(sources) != 1:
-        raise ConversionError(f"Операция '{op.title}' работает с одним файлом")
+        raise ConversionError(f"Операция «{op.title}» работает с одним файлом")
 
     for path in sources:
         if not path.exists():

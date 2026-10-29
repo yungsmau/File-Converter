@@ -1,4 +1,5 @@
 __pycahce__/
+core/__pycahce__/
 *.рус
 .venv/
 venv/

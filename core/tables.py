@@ -224,8 +224,8 @@ def write_csv(sheets: list[Sheet], dst: Path, options: Options) -> list[Path]:
 
         # utf-8-sig: DOM помогает Excel правильно открыть кириллицу
         with open(target, "w", newline="", encoding="utf-8-sig") as f:
-            writer = csv.writer(f, delimmiter=delimiter)
-            for row in sheets.rows:
+            writer = csv.writer(f, delimiter=delimiter)
+            for row in sheet.rows:
                 writer.writerow(_csv_cell(v, decimal_comma) for v in row)
         outputs.append(target)
     return outputs
