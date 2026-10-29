@@ -135,7 +135,7 @@ def preview_split(src: Path, options: Options) -> list[dict]:
 def split(sources: list[Path], output: Path | None, options: Options) -> list[Path]:
     """Один PDF -> несколько. Опции: ranges='1-3,5,7-' (файл на диапазон) или every=N (файл на N страниц)."""
     src = sources[0]
-    base = output or src  # из base берётся только папка и имя; расширение всегда .pdf
+    base = output or src  # из base берется только папка и имя; расширение всегда .pdf
     overwrite = options.get("overwrite", False)
 
     doc = open_pdf(src)

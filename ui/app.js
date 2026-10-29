@@ -1,7 +1,7 @@
 "use strict";
 
 /* ====================================================================
-   Состояние. Всё, что видно в окне, рисуется из этого объекта функцией render().
+   Состояние. Все, что видно в окне, рисуется из этого объекта функцией render().
    ==================================================================== */
 const state = {
   tab: "convert", // "convert" | "pdf"
@@ -164,14 +164,14 @@ const OP_META = {
 };
 
 const LEVELS = [
-  { id: "low", title: "Лёгкое", desc: "Без потери качества" },
+  { id: "low", title: "Легкое", desc: "Без потери качества" },
   { id: "medium", title: "Среднее", desc: "Картинки до 150 DPI", best: true },
   { id: "high", title: "Сильное", desc: "До 100 DPI, заметнее потери" },
 ];
 
 function pickerNote(file, target) {
   if (file.kind === "pdf" && target === ".txt")
-    return "Берётся текстовый слой PDF. Для сканов нужен OCR, его пока нет";
+    return "Берется текстовый слой PDF. Для сканов нужен OCR, его пока нет";
   if (file.kind === "pdf")
     return "Каждая страница станет отдельным файлом · 150 DPI";
   if (target === ".csv")
@@ -261,10 +261,10 @@ function viewConvert() {
     const n = done.outputs.length;
     actions = `
       <div class="actions">
-        <div class="status-ok" role="status">${n === 1 ? "Готово. Файл сохранён рядом с исходным" : `Готово. Создано ${n} ${plural(n, ["файл", "файла", "файлов"])} рядом с исходным`}</div>
+        <div class="status-ok" role="status">${n === 1 ? "Готово. Файл сохранен рядом с исходным" : `Готово. Создано ${n} ${plural(n, ["файл", "файла", "файлов"])} рядом с исходным`}</div>
         <div class="btns">
           <button type="button" class="btn" data-act="reveal">Показать в папке</button>
-          <button type="button" class="btn ghost" data-act="convert-reset">Конвертировать ещё</button>
+          <button type="button" class="btn ghost" data-act="convert-reset">Конвертировать еще</button>
         </div>
       </div>`;
   } else {
@@ -930,7 +930,7 @@ function closePicker() {
 }
 
 document.addEventListener("click", (e) => {
-  // клик мимо подсказки закрывает её
+  // клик мимо подсказки закрывает ее
   if (
     state.help &&
     !e.target.closest("#help") &&
@@ -968,7 +968,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// поля ввода: перерисовывать всё окно на каждую букву нельзя (пропадёт фокус), обновляем только предпросмотр
+// поля ввода: перерисовывать все окно на каждую букву нельзя (пропадет фокус), обновляем только предпросмотр
 app.addEventListener("input", (e) => {
   const p = state.pdf;
   if (e.target.id === "ranges") {

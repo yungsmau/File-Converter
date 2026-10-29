@@ -1,4 +1,4 @@
-"""Слой между интерфейсом (окном) и ядром: принимает и отдаёт только простые данные (dict, list, str),
+"""Слой между интерфейсом (окном) и ядром: принимает и отдает только простые данные (dict, list, str),
 которые без проблем ходят через мост pywebview. Ничего не знает про окно, поэтому тестируется отдельно.
 """
 
@@ -14,10 +14,15 @@ from PIL import Image
 from core import images
 from core.errors import ConversionError
 from core.pdf_tools import OPERATIONS, preview_split, run_operation
-from core.registry import CONVERTERS, convert, supported_formats, targets_for  # noqa: F401 (supported_formats нужен app.py)
+from core.registry import (
+    CONVERTERS,
+    convert,
+    supported_formats,
+    targets_for,
+)  # noqa: F401 (supported_formats нужен app.py)
 from core.utils import format_size
 
-# что окно вообще имеет право передавать в качестве настроек (всё остальное отбрасывается)
+# что окно вообще имеет право передавать в качестве настроек (все остальное отбрасывается)
 DEFAULT_OPTIONS: dict[str, Any] = {
     "delimiter": ";",  # русский Excel открывает CSV только с точкой с запятой
     "quality": 90,
@@ -66,7 +71,7 @@ def _kind(ext: str) -> str:
 
 
 def describe_file(path: Path, with_targets: bool = True) -> dict:
-    """Всё, что окно показывает про файл: имя, размер, страницы или размеры картинки, доступные форматы."""
+    """Все, что окно показывает про файл: имя, размер, страницы или размеры картинки, доступные форматы."""
     ext = path.suffix.lower()
     size = path.stat().st_size
     info = {
@@ -86,7 +91,7 @@ def describe_file(path: Path, with_targets: bool = True) -> dict:
             doc = pymupdf.open(path)
             try:
                 if doc.needs_pass:
-                    info["note"] = "Защищён паролем"
+                    info["note"] = "Защищен паролем"
                 else:
                     info["pages"] = doc.page_count
             finally:

@@ -79,7 +79,7 @@ _register_family(
 _register_family(
     "PDF",
     readers={".pdf": pdf.read_pages},
-    # страницы PDF -> те же писатели картинок, только применённые к каждой странице (PDF -> PDF не нужен)
+    # страницы PDF -> те же писатели картинок, только примененные к каждой странице (PDF -> PDF не нужен)
     writers={
         ext: pdf.per_page(w) for ext, w in images.WRITERS.items() if ext != ".pdf"
     },

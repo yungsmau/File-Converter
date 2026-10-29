@@ -12,7 +12,7 @@ UI_DIR = BASE_DIR / "ui"
 
 
 class Api:
-    """Методы без подчёркивания видны из JS: window.pywebview.api.<имя>(). Вся логика живёт в core.service."""
+    """Методы без подчеркивания видны из JS: window.pywebview.api.<имя>(). Вся логика живет в core.service."""
 
     def formats(self):
         return service.supported_formats()
@@ -49,7 +49,7 @@ def on_drop(event):
     if not paths:
         return
     window = webview.windows[0]
-    # режим (конвертация или PDF) знает только страница, поэтому отдаём ей все файлы, а она решает, что с ними делать
+    # режим (конвертация или PDF) знает только страница, поэтому отдаем ей все файлы, а она решает, что с ними делать
     window.evaluate_js(
         f"onFilesDropped({json.dumps([service.describe_file(p) for p in paths])})"
     )

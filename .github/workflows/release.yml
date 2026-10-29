@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    name: Сборка (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            os: macos-latest
+            data_sep: ":"
+            icon: icon.icns
+          - name: windows
+            os: windows-latest
+            data_sep: ";"
+            icon: icon.png
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Версия в коде совпадает с тегом
+        shell: bash
+        run: |
+          VERSION=$(python -c "import core; print(core.__version__)")
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "Тег $GITHUB_REF_NAME не совпадает с версией в core/__init__.py ($VERSION)"
+            exit 1
+          fi
+
+      - name: Установка зависимостей
+        run: pip install -r requirements.txt -r requirements-dev.txt pyinstaller
+
+      - name: Тесты
+        run: pytest
+
+      - name: Сборка приложения
+        shell: bash
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --name Converter \
+            --icon ${{ matrix.icon }} \
+            --add-data "ui${{ matrix.data_sep }}ui" \
+            --collect-submodules core \
+            --collect-all pymupdf \
+            --collect-all pillow_heif \
+            --collect-all openpyxl \
+            --collect-all xlrd \
+            --exclude-module onnxruntime --exclude-module numpy --exclude-module pandas \
+            --exclude-module matplotlib --exclude-module scipy --exclude-module torch \
+            --exclude-module tkinter \
+            app.py
+
+      - name: Архив (macOS)
+        if: matrix.name == 'macos'
+        run: ditto -c -k --keepParent dist/Converter.app Converter-macos.zip
+
+      - name: Архив (Windows)
+        if: matrix.name == 'windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/Converter -DestinationPath Converter-windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Converter-${{ matrix.name }}
+          path: Converter-${{ matrix.name }}.zip
+
+  release:
+    name: Публикация релиза
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.zip
+          generate_release_notes: true
