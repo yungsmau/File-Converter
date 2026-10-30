@@ -16,10 +16,12 @@ jobs:
             os: macos-latest
             data_sep: ":"
             icon: icon.icns
+            asset: "Converter-*.dmg"
           - name: windows
             os: windows-latest
             data_sep: ";"
-            icon: icon.png
+            icon: icon.ico
+            asset: "installer/output/Converter-Setup-*.exe"
     steps:
       - uses: actions/checkout@v4
 
@@ -36,6 +38,7 @@ jobs:
             echo "Тег $GITHUB_REF_NAME не совпадает с версией в core/__init__.py ($VERSION)"
             exit 1
           fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Установка зависимостей
         run: pip install -r requirements.txt -r requirements-dev.txt pyinstaller
@@ -59,19 +62,26 @@ jobs:
             --exclude-module tkinter \
             app.py
 
-      - name: Архив (macOS)
+      - name: Образ DMG (macOS)
         if: matrix.name == 'macos'
-        run: ditto -c -k --keepParent dist/Converter.app Converter-macos.zip
+        run: |
+          mkdir dmg-root
+          cp -R dist/Converter.app dmg-root/
+          ln -s /Applications dmg-root/Applications
+          hdiutil create -volname "Converter" -srcfolder dmg-root -ov -format UDZO "Converter-$VERSION.dmg"
 
-      - name: Архив (Windows)
+      - name: Установщик (Windows)
         if: matrix.name == 'windows'
         shell: pwsh
-        run: Compress-Archive -Path dist/Converter -DestinationPath Converter-windows.zip
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$env:VERSION" installer\windows.iss
 
       - uses: actions/upload-artifact@v4
         with:
           name: Converter-${{ matrix.name }}
-          path: Converter-${{ matrix.name }}.zip
+          path: ${{ matrix.asset }}
+          if-no-files-found: error
 
   release:
     name: Публикация релиза
@@ -87,5 +97,5 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*.zip
+          files: artifacts/*
           generate_release_notes: true

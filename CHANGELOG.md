@@ -2,6 +2,12 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии по [SemVer](https://semver.org/lang/ru/).
 
+## [0.1.1]
+
+### Изменено
+
+- Релизы теперь собираются как установщик для Windows и DMG для macOS.
+
 ## [0.1.0]
 
 ### Добавлено

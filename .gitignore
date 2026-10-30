@@ -1,3 +1,5 @@
+installer/output/
+dmg-root/
 __pycahce__/
 core/__pycahce__/
 *.рус
