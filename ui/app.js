@@ -14,6 +14,8 @@ const state = {
     result: null,
     error: null,
     hint: null,
+    outName: "", // имя результата без расширения ("" = по умолчанию)
+    outDir: null, // {path, name} выбранной папки (null = рядом с исходным)
   },
   pdf: {
     op: "merge", // "merge" | "split" | "compress"
@@ -27,6 +29,8 @@ const state = {
     ranges: "",
     every: 2,
     preview: null,
+    outName: "",
+    outDir: null,
   },
 };
 
@@ -50,6 +54,14 @@ const esc = (s) =>
 
 const stem = (name) => name.replace(/\.[^.]+$/, "");
 const extLabel = (ext) => ext.replace(".", "").toUpperCase();
+
+// Имя файла для показа: основа сокращается многоточием, расширение всегда видно, полное имя в подсказке
+function nameHtml(name) {
+  const dot = name.lastIndexOf(".");
+  const base = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : "";
+  return `<span class="fname" title="${esc(name)}"><span class="base">${esc(base)}</span><span class="ext">${esc(ext)}</span></span>`;
+}
 
 function plural(n, forms) {
   const m10 = n % 10,
@@ -124,6 +136,7 @@ const CLOSE = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" strok
 const CHECK = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.8"/></svg>`;
 const ARROW = `<svg class="arrow" width="64" height="24" viewBox="0 0 64 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h54M48 4l10 8-10 8"/></svg>`;
 const DOTS = `<svg width="12" height="18" viewBox="0 0 12 18" fill="currentColor" aria-hidden="true"><circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/><circle cx="3" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/><circle cx="3" cy="15" r="1.5"/><circle cx="9" cy="15" r="1.5"/></svg>`;
+const FOLDER = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>`;
 const CHEVRON = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3.5l3 3 3-3"/></svg>`;
 
 /* ====================================================================
@@ -214,6 +227,30 @@ function spinnerLabel(text) {
 const sumSize = (files) =>
   formatSize(files.reduce((acc, f) => acc + f.size, 0));
 
+// Строка "Имя + папка" для экранов, где результат ещё не создан. s: state.convert или state.pdf
+function outRow(s, defaultStem, ext) {
+  const where = s.outDir ? s.outDir.name : "Рядом с исходным";
+  const tip = s.outDir
+    ? s.outDir.path
+    : "Результат появится в папке исходного файла";
+  return `
+    <div class="out">
+      <label class="out-name">
+        <span class="lbl">Имя</span>
+        <input id="outname" class="input" type="text" value="${esc(s.outName)}" placeholder="${esc(defaultStem)}" autocomplete="off" spellcheck="false">
+        <span class="out-ext">${esc(ext)}</span>
+      </label>
+      <span class="out-folder">
+        <button type="button" class="btn ghost small" data-act="pick-folder" title="${esc(tip)}">${FOLDER}<span class="where">${esc(where)}</span></button>
+        ${s.outDir ? `<button type="button" class="icon-btn" data-act="reset-folder" aria-label="Сохранять рядом с исходным">${CLOSE}</button>` : ""}
+      </span>
+    </div>`;
+}
+
+const currentOut = () => (state.tab === "convert" ? state.convert : state.pdf);
+// [папка, имя] для вызовов Python
+const outArgs = (s) => [s.outDir ? s.outDir.path : null, s.outName];
+
 /* ====================================================================
    Экран "Конвертация"
    ==================================================================== */
@@ -241,7 +278,7 @@ function viewConvert() {
         <span class="check">${CHECK}</span>
         ${fileIcon(c.target)}
         <div>
-          <div class="name">${esc(one ? outs[0].name : `${outs.length} ${plural(outs.length, ["файл", "файла", "файлов"])}`)}</div>
+          <div class="name">${one ? nameHtml(outs[0].name) : esc(`${outs.length} ${plural(outs.length, ["файл", "файла", "файлов"])}`)}</div>
           <div class="meta">${esc(one ? fileMeta(outs[0]).text : sumSize(outs))}</div>
         </div>
       </div>`;
@@ -250,7 +287,7 @@ function viewConvert() {
       <button type="button" class="card target" data-act="open-picker" aria-haspopup="dialog">
         ${fileIcon(c.target)}
         <div>
-          <div class="name">${esc(stem(f.name) + c.target)}</div>
+          <div class="name">${nameHtml((c.outName.trim() || stem(f.name)) + c.target)}</div>
           <span class="pick">Формат: ${esc(extLabel(c.target))} ${CHEVRON}</span>
         </div>
       </button>`;
@@ -261,7 +298,7 @@ function viewConvert() {
     const n = done.outputs.length;
     actions = `
       <div class="actions">
-        <div class="status-ok" role="status">${n === 1 ? "Готово. Файл сохранен рядом с исходным" : `Готово. Создано ${n} ${plural(n, ["файл", "файла", "файлов"])} рядом с исходным`}</div>
+        <div class="status-ok" role="status">${n === 1 ? `Готово. Файл сохранён в папку «${esc(done.folder_name)}»` : `Готово. Создано ${n} ${plural(n, ["файл", "файла", "файлов"])} в папке «${esc(done.folder_name)}»`}</div>
         <div class="btns">
           <button type="button" class="btn" data-act="reveal">Показать в папке</button>
           <button type="button" class="btn ghost" data-act="convert-reset">Конвертировать еще</button>
@@ -270,6 +307,7 @@ function viewConvert() {
   } else {
     actions = `
       <div class="actions">
+        ${c.busy ? "" : outRow(c, stem(f.name), c.target)}
         ${c.error ? `<div class="error" role="alert">${esc(c.error)}</div>` : ""}
         <button type="button" class="btn" data-act="convert-run" ${c.busy ? "disabled" : ""}>
           ${c.busy ? spinnerLabel("Конвертируем…") : "Конвертировать"}
@@ -284,7 +322,7 @@ function viewConvert() {
           ${done || c.busy ? "" : `<button type="button" class="icon-btn remove" data-act="convert-reset" aria-label="Убрать файл">${CLOSE}</button>`}
           ${fileIcon(f.ext)}
           <div>
-            <div class="name" title="${esc(f.name)}">${esc(f.name)}</div>
+            <div class="name">${nameHtml(f.name)}</div>
             <div class="meta ${meta.warn ? "warn" : ""}">${esc(meta.text)}</div>
           </div>
         </div>
@@ -376,7 +414,7 @@ function singleRow(f) {
     <div class="single">
       ${fileIcon(f.ext, 30)}
       <span class="text" style="flex:1;min-width:0">
-        <span class="name" style="display:block;font-size:14px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</span>
+        <span class="name" style="display:block;font-size:14px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameHtml(f.name)}</span>
         <span class="meta" style="display:block;font-size:12px;color:var(${meta.warn ? "--err" : "--muted"})">${esc(meta.text)}</span>
       </span>
       <button type="button" class="icon-btn" data-act="remove-file" data-v="${esc(f.path)}" aria-label="Убрать файл">${CLOSE}</button>
@@ -398,7 +436,7 @@ function viewMerge() {
         <span class="num">${i + 1}</span>
         ${fileIcon(f.ext, 30)}
         <span class="text">
-          <span class="name" title="${esc(f.name)}">${esc(f.name)}</span>
+          <span class="name">${nameHtml(f.name)}</span>
           <span class="meta ${meta.warn ? "warn" : ""}">${esc(meta.text)}</span>
         </span>
         <button type="button" class="icon-btn" data-act="remove-file" data-v="${esc(f.path)}" aria-label="Убрать ${esc(f.name)}">${CLOSE}</button>
@@ -417,10 +455,11 @@ function viewMerge() {
     <button type="button" class="add" data-act="pick"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 2v10M2 7h10"/></svg>Добавить файлы <span>· порядок меняется за точки слева</span></button>
     ${p.error ? `<div class="error left" role="alert">${esc(p.error)}</div>` : ""}
     <div style="flex:1"></div>
+    ${outRow(p, `${stem(p.files[0].name)}_merged`, ".pdf")}
     <div class="footer">
       <div>
         <div class="sum">${n} ${plural(n, ["файл", "файла", "файлов"])} · ${pages} стр.</div>
-        <div class="note">${ready ? `Результат: ${esc(stem(p.files[0].name))}_merged.pdf` : "Добавьте хотя бы два файла"}</div>
+        <div class="note">${ready ? "" : "Добавьте хотя бы два файла"}</div>
       </div>
       <button type="button" class="btn" data-act="run" ${ready && !p.busy ? "" : "disabled"}>${p.busy ? spinnerLabel("Объединяем…") : "Объединить"}</button>
     </div>`;
@@ -488,8 +527,9 @@ function viewSplit(f) {
     <div id="preview" style="overflow:auto;min-height:0">${previewHtml()}</div>
     ${p.error ? `<div class="error left" role="alert">${esc(p.error)}</div>` : ""}
     <div style="flex:1"></div>
+    ${outRow(p, stem(f.name), ".pdf")}
     <div class="footer">
-      <div class="note">Файлы появятся рядом с исходным</div>
+      <div class="note">К имени добавится номер страницы</div>
       <button type="button" class="btn" id="run" data-act="run" ${ok && !p.busy ? "" : "disabled"}>${p.busy ? spinnerLabel("Делим…") : "Разделить"}</button>
     </div>`;
 }
@@ -529,7 +569,7 @@ function viewCompress(f) {
   const footer = r
     ? `<button type="button" class="btn ghost" data-act="result-again">Сжать заново</button>
        <button type="button" class="btn" data-act="reveal">Показать в папке</button>`
-    : `<div class="note">Итог: ${esc(stem(f.name))}_compressed.pdf</div>
+    : `<div class="note"></div>
        <button type="button" class="btn" data-act="run" ${p.busy ? "disabled" : ""}>${p.busy ? spinnerLabel("Сжимаем…") : "Сжать"}</button>`;
 
   return `
@@ -538,6 +578,7 @@ function viewCompress(f) {
     ${middle}
     ${p.error ? `<div class="error left" role="alert">${esc(p.error)}</div>` : ""}
     <div style="flex:1"></div>
+    ${r ? "" : outRow(p, `${stem(f.name)}_compressed`, ".pdf")}
     <div class="footer">${footer}</div>`;
 }
 
@@ -549,8 +590,8 @@ function viewDoneList() {
     <div class="done-box" role="status">
       <div class="head"><span class="check">${CHECK}</span>${
         n === 1
-          ? "Файл создан рядом с исходным"
-          : `Создано ${n} ${plural(n, ["файл", "файла", "файлов"])} рядом с исходным`
+          ? `Файл создан в папке «${esc(p.result.folder_name)}»`
+          : `Создано ${n} ${plural(n, ["файл", "файла", "файлов"])} в папке «${esc(p.result.folder_name)}»`
       }</div>
       <div class="chips">${outs
         .map(
@@ -659,6 +700,7 @@ function setConvertFile(f) {
     ? DEFAULT_TARGET[f.ext]
     : f.targets[0];
   c.result = null;
+  c.outName = "";
   c.error = null;
   c.hint = null;
   render();
@@ -753,7 +795,7 @@ function schedulePreview(immediate = false) {
       const seq = ++previewSeq;
       let r;
       try {
-        r = await api().split_preview(f.path, splitOptions());
+        r = await api().split_preview(f.path, splitOptions(), p.outName);
       } catch (e) {
         r = { ok: false, error: String(e) };
       }
@@ -782,7 +824,9 @@ async function runConvert() {
   c.busy = true;
   c.error = null;
   render();
-  const r = await callApi(() => api().convert(c.file.path, c.target, {}));
+  const r = await callApi(() =>
+    api().convert(c.file.path, c.target, {}, ...outArgs(c)),
+  );
   c.busy = false;
   if (r.ok) c.result = r;
   else c.error = r.error;
@@ -802,15 +846,26 @@ async function runPdf() {
         "merge",
         p.files.map((f) => f.path),
         {},
+        ...outArgs(p),
       ),
     );
   } else if (p.op === "split") {
     r = await callApi(() =>
-      api().run_tool("split", [singleFile().path], splitOptions()),
+      api().run_tool(
+        "split",
+        [singleFile().path],
+        splitOptions(),
+        ...outArgs(p),
+      ),
     );
   } else {
     r = await callApi(() =>
-      api().run_tool("compress", [singleFile().path], { level: p.level }),
+      api().run_tool(
+        "compress",
+        [singleFile().path],
+        { level: p.level },
+        ...outArgs(p),
+      ),
     );
   }
   p.busy = false;
@@ -867,6 +922,8 @@ const ACTIONS = {
       result: null,
       error: null,
       hint: null,
+      outName: "",
+      outDir: state.convert.outDir,
     };
     render();
   },
@@ -875,6 +932,7 @@ const ACTIONS = {
   "set-op": (el) => {
     const p = state.pdf;
     p.op = el.dataset.v;
+    p.outName = "";
     p.result = null;
     p.error = null;
     p.hint = null;
@@ -917,9 +975,23 @@ const ACTIONS = {
       result: null,
       error: null,
       hint: null,
+      outName: "",
     });
     resetPreview();
     render();
+  },
+  "pick-folder": async () => {
+    if (!window.pywebview) return;
+    const folder = await api().pick_folder();
+    if (!folder) return;
+    const s = currentOut();
+    s.outDir = folder;
+    s.error = null;
+    render("[data-act='pick-folder']");
+  },
+  "reset-folder": () => {
+    currentOut().outDir = null;
+    render("[data-act='pick-folder']");
   },
   reveal: () => reveal(),
 };
@@ -979,6 +1051,20 @@ app.addEventListener("input", (e) => {
     p.every = e.target.value;
     p.error = null;
     schedulePreview();
+  } else if (e.target.id === "outname") {
+    const s = currentOut();
+    s.outName = e.target.value;
+    s.error = null;
+    if (state.tab === "convert") {
+      // перерисовывать окно нельзя (пропадёт фокус), поэтому обновляем только имя в карточке
+      const name = document.querySelector(".card.target .name");
+      if (name)
+        name.innerHTML = nameHtml(
+          (s.outName.trim() || stem(s.file.name)) + s.target,
+        );
+    } else {
+      schedulePreview();
+    }
   }
 });
 

@@ -224,6 +224,14 @@ svg { display: block; flex: none; }
   color: inherit;
   text-align: center;
 }
+
+/* Имя файла: основа сокращается многоточием, расширение остаётся видно */
+.fname { display: flex; min-width: 0; max-width: 100%; }
+.fname .base { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fname .ext { flex: none; white-space: nowrap; }
+.card > div { min-width: 0; max-width: 100%; }
+.card .name .fname { justify-content: center; }
+
 .card .name { font-size: 15px; font-weight: 650; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card .meta { margin-top: 2px; font-size: 12.5px; color: var(--muted); }
 .card .meta.warn { color: var(--err); }
@@ -438,7 +446,7 @@ body.dragging .add { border-color: var(--accent); background: var(--accent-soft)
 .input:focus { border-color: var(--accent); }
 .input.short { width: 120px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; max-height: 120px; overflow-y: auto; }
-.chip { padding: 5px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); font-size: 12.5px; }
+.chip { max-width: 100%; overflow-wrap: anywhere; padding: 5px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); font-size: 12.5px; }
 .chip span { color: var(--muted); }
 
 /* ---------- Сжатие ---------- */
@@ -490,3 +498,15 @@ body.dragging .add { border-color: var(--accent); background: var(--accent-soft)
   .spinner { animation-duration: 2s; }
   .drop { transition: none; }
 }
+
+/* ---------- Имя результата и папка ---------- */
+.out { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 520px; }
+.out-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.out-name .lbl { font-size: 13px; font-weight: 650; }
+.out-name .input { height: 36px; font-size: 14px; font-family: inherit; min-width: 0; }
+.out-ext { font-size: 14px; color: var(--muted); }
+.out-folder { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.btn.small { height: 36px; min-width: 0; padding: 0 12px; font-size: 13.5px; border-radius: 12px; max-width: 190px; }
+.btn.small .where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.view > .out { max-width: none; }
+.actions > .out { margin-bottom: 28px; }

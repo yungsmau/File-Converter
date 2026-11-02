@@ -29,14 +29,19 @@ class Api:
         )
         return [service.describe_file(Path(p)) for p in (result or [])]
 
-    def convert(self, src, target_ext, options=None):
-        return service.convert_file(src, target_ext, options)
+    def pick_folder(self):
+        window = webview.windows[0]
+        result = window.create_file_dialog(webview.FileDialog.FOLDER)
+        return service.describe_folder(result[0]) if result else None
 
-    def run_tool(self, op_id, paths, options=None):
-        return service.run_tool(op_id, paths, options)
+    def convert(self, src, target_ext, options=None, out_dir=None, out_name=None):
+        return service.convert_file(src, target_ext, options, out_dir, out_name)
 
-    def split_preview(self, path, options=None):
-        return service.split_preview(path, options)
+    def run_tool(self, op_id, paths, options=None, out_dir=None, out_name=None):
+        return service.run_tool(op_id, paths, options, out_dir, out_name)
+
+    def split_preview(self, path, options=None, out_name=None):
+        return service.split_preview(path, options, out_name)
 
     def reveal(self, path):
         service.reveal_in_folder(path)
@@ -66,7 +71,7 @@ if __name__ == "__main__":
         str(UI_DIR / "index.html"),
         js_api=Api(),
         width=640,
-        height=560,
-        min_size=(560, 500),
+        height=600,
+        min_size=(560, 560),
     )
     webview.start(bind_events, window)

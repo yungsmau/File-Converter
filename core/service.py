@@ -15,7 +15,7 @@ from core import images
 from core.errors import ConversionError
 from core.pdf_tools import OPERATIONS, preview_split, run_operation
 from core.registry import CONVERTERS, convert, supported_formats, targets_for  # noqa: F401 (supported_formats нужен app.py)
-from core.utils import format_size
+from core.utils import format_size, safe_name
 
 # что окно вообще имеет право передавать в качестве настроек (все остальное отбрасывается)
 DEFAULT_OPTIONS: dict[str, Any] = {
@@ -119,6 +119,35 @@ def dialog_filters(accept: list[str] | None) -> tuple[str, ...]:
 
 
 # ---------- действия ----------
+DEFAULT_SUFFIX = {"merge": "_merged", "compress": "_compressed"}
+
+
+def describe_folder(path: str) -> dict:
+    p = Path(path)
+    return {"path": str(p), "name": p.name or str(p)}
+
+
+def _clean_stem(name: str | None, ext: str) -> str:
+    """Имя, которое ввел пользователь, -> безопасная основа без расширения ('' если ничего не введено)"""
+    name = (name or "").strip()
+    if name.lower().endswith(ext.lower()):
+        name = name[: -len(ext)]
+    return safe_name(name, fallback="") if name else ""
+
+
+def _target(
+    src: Path,
+    ext: str,
+    out_dir: str | None,
+    out_name: str | None,
+    default_stem: str | None = None,
+) -> Path:
+    """Куда сохранять (по умолчанию рядом с исходником)"""
+    folder = Path(out_dir) if out_dir else src.parent
+    if not folder.is_dir():
+        raise ConversionError(f"Папка не существует: {folder}")
+    stem = _clean_stem(out_name, ext) or default_stem or src.stem
+    return folder / f"{stem}{ext}"
 
 
 def _result(sources: list[Path], outputs: list[Path]) -> dict:
@@ -128,6 +157,10 @@ def _result(sources: list[Path], outputs: list[Path]) -> dict:
         "source_size": source_size,
         "source_size_text": format_size(source_size),
         "outputs": [describe_file(p, with_targets=False) for p in outputs],
+        "folder": str(outputs[0].parent) if outputs else "",
+        "folder_name": (
+            (outputs[0].parent.name or str(outputs[0].parent)) if outputs else ""
+        ),
     }
     if len(sources) == 1 and len(outputs) == 1 and source_size:
         # для сжатия: на сколько процентов файл стал меньше (не бывает отрицательным)
@@ -138,24 +171,45 @@ def _result(sources: list[Path], outputs: list[Path]) -> dict:
 
 
 @_guard
-def convert_file(src: str, target_ext: str, raw_options: dict | None = None) -> dict:
+def convert_file(
+    src: str,
+    target_ext: str,
+    raw_options: dict | None = None,
+    out_dir: str | None = None,
+    out_name: str | None = None,
+) -> dict:
     src_path = Path(src)
-    outputs = convert(
-        src_path, src_path.with_suffix(target_ext), clean_options(raw_options)
-    )
+    dst = _target(src_path, target_ext, out_dir, out_name)
+    outputs = convert(src_path, dst, clean_options(raw_options))
     return _result([src_path], outputs)
 
 
 @_guard
-def run_tool(op_id: str, paths: list[str], raw_options: dict | None = None) -> dict:
+def run_tool(
+    op_id: str,
+    paths: list[str],
+    raw_options: dict | None = None,
+    out_dir: str | None = None,
+    out_name: str | None = None,
+) -> dict:
     sources = [Path(p) for p in paths]
-    outputs = run_operation(op_id, sources, clean_options(raw_options))
+    output = None
+    if sources:
+        first = sources[0]
+        output = _target(
+            first, ".pdf", out_dir, out_name, first.stem + DEFAULT_SUFFIX.get(op_id, "")
+        )
+    outputs = run_operation(op_id, sources, clean_options(raw_options), output)
     return _result(sources, outputs)
 
 
 @_guard
-def split_preview(path: str, raw_options: dict | None = None) -> dict:
-    parts = preview_split(Path(path), clean_options(raw_options))
+def split_preview(
+    path: str, raw_options: dict | None = None, out_name: str | None = None
+) -> dict:
+    parts = preview_split(
+        Path(path), clean_options(raw_options), _clean_stem(out_name, ".pdf") or None
+    )
     return {"ok": True, "parts": parts}
 
 

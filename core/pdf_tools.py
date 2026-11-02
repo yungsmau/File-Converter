@@ -119,7 +119,7 @@ def _part_name(stem: str, first: int, last: int, total: int) -> str:
     return f"{stem}_pages-{first:0{width}d}-{last:0{width}d}.pdf"
 
 
-def preview_split(src: Path, options: Options) -> list[dict]:
+def preview_split(src: Path, options: Options, stem: str | None = None) -> list[dict]:
     """что получится при раздлелении, без создания файлов (для предпросмотра в окне)"""
     doc = open_pdf(src)
     try:
@@ -127,7 +127,7 @@ def preview_split(src: Path, options: Options) -> list[dict]:
     finally:
         doc.close()
     return [
-        {"name": _part_name(src.stem, a, b, total), "pages": b - a + 1}
+        {"name": _part_name(stem or src.stem, a, b, total), "pages": b - a + 1}
         for a, b in plan_split(total, options)
     ]
 
@@ -135,7 +135,7 @@ def preview_split(src: Path, options: Options) -> list[dict]:
 def split(sources: list[Path], output: Path | None, options: Options) -> list[Path]:
     """Один PDF -> несколько. Опции: ranges='1-3,5,7-' (файл на диапазон) или every=N (файл на N страниц)."""
     src = sources[0]
-    base = output or src  # из base берется только папка и имя; расширение всегда .pdf
+    base = output or src  # из base берётся только папка и имя; расширение всегда .pdf
     overwrite = options.get("overwrite", False)
 
     doc = open_pdf(src)
