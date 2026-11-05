@@ -29,6 +29,8 @@ const state = {
     ranges: "",
     every: 2,
     preview: null,
+    selected: new Set(),
+    anchor: null,
     outName: "",
     outDir: null,
   },
@@ -587,7 +589,7 @@ function previewHtml() {
   if (!r) {
     return `<div class="field"><span class="hint">${
       p.splitMode === "ranges"
-        ? "Введите диапазоны, например 1-3, 5, 11-"
+        ? "Введите диапазоны или отметьте страницы ниже"
         : "Предпросмотр появится здесь"
     }</span></div>`;
   }
@@ -595,6 +597,17 @@ function previewHtml() {
     return `<div class="error left" role="alert">${esc(r.error)}</div>`;
   const n = r.parts.length;
   const src = singleFile();
+  if (p.splitMode === "ranges") {
+    // в этом режиме итог видно по сетке страниц, а здесь только краткая сводка
+    const labels = r.parts.map((x) =>
+      x.first === x.last ? `стр. ${x.first}` : `стр. ${x.first}–${x.last}`,
+    );
+    return `
+      <div class="field">
+        <div class="head"><label>Получится: ${n} ${plural(n, ["файл", "файла", "файлов"])}</label></div>
+        <div class="hint">${esc(labels.join(" · "))}</div>
+      </div>`;
+  }
   return `
     <div class="field">
       <div class="head"><label>Получится: ${n} ${plural(n, ["файл", "файла", "файлов"])}</label></div>
@@ -608,6 +621,40 @@ function previewHtml() {
         )
         .join("")}</div>
     </div>`;
+}
+
+// [1, 2, 3, 5, 10] -> "1-3, 5, 10"
+function pagesToRanges(pages) {
+  const sorted = [...pages].sort((a, b) => a - b);
+  const out = [];
+  let i = 0;
+  while (i < sorted.length) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
+    out.push(j > i ? `${sorted[i]}-${sorted[j]}` : `${sorted[i]}`);
+    i = j + 1;
+  }
+  return out.join(", ");
+}
+
+// Сетка всех страниц документа: клик отмечает страницу, Shift+клик отмечает диапазон
+function pageGrid(f) {
+  const tiles = Array.from({ length: f.pages || 0 }, (_, i) => {
+    const n = i + 1;
+    const on = state.pdf.selected.has(n);
+    return `<button type="button" class="pg ${on ? "on" : ""}" data-act="toggle-page" data-v="${n}" aria-pressed="${on}" aria-label="Страница ${n}">${thumb({ path: f.path, page: i, ext: ".pdf" }, "md")}<span class="n">${n}</span></button>`;
+  }).join("");
+  return `<div id="pagegrid" class="pagegrid">${tiles}</div>`;
+}
+
+// Подсветка сетки по состоянию p.selected (без перерисовки: иначе сбросится прокрутка)
+function syncGrid() {
+  const sel = state.pdf.selected;
+  for (const el of document.querySelectorAll("#pagegrid .pg")) {
+    const on = sel.has(Number(el.dataset.v));
+    el.classList.toggle("on", on);
+    el.setAttribute("aria-pressed", String(on));
+  }
 }
 
 function viewSplit(f) {
@@ -644,7 +691,8 @@ function viewSplit(f) {
       )
       .join("")}</div>
     ${input}
-    <div id="preview" style="overflow:auto;min-height:0;flex:1 1 auto">${previewHtml()}</div>
+    <div id="preview" style="overflow:auto;min-height:0;flex:${p.splitMode === "ranges" ? "0 0 auto" : "1 1 auto"}">${previewHtml()}</div>
+    ${p.splitMode === "ranges" && f.pages ? pageGrid(f) : ""}
     ${p.error ? `<div class="error left" role="alert">${esc(p.error)}</div>` : ""}
     ${outRow(p, stem(f.name), ".pdf")}
     <div class="footer">
@@ -795,6 +843,7 @@ function render(focusKey) {
     ${state.picker ? viewPicker() : ""}`;
 
   const lazyRoot =
+    document.getElementById("pagegrid") ||
     document.getElementById("preview") ||
     document.querySelector(".done-box .gallery");
   if (lazyRoot) observeThumbs(lazyRoot);
@@ -898,19 +947,33 @@ function splitOptions() {
 
 function resetPreview() {
   state.pdf.preview = null;
+  state.pdf.selected = new Set();
+  state.pdf.anchor = null;
   previewSeq++; // ответ на прежний запрос больше не нужен
 }
 
 function updatePreview() {
+  const p = state.pdf;
   const box = document.getElementById("preview");
   if (box) {
     box.innerHTML = previewHtml();
-    observeThumbs(box);
+    observeThumbs(document.getElementById("pagegrid") || box);
+  }
+  if (p.splitMode === "ranges") {
+    // выделение в сетке следует за текстом в поле: пустое поле снимает всё, верный текст отмечает его страницы
+    if (!p.ranges.trim()) p.selected = new Set();
+    else if (p.preview && p.preview.ok) {
+      p.selected = new Set(
+        p.preview.parts.flatMap((x) =>
+          Array.from({ length: x.last - x.first + 1 }, (_, k) => x.first + k),
+        ),
+      );
+    }
+    syncGrid();
   }
   const run = document.getElementById("run");
-  if (run && state.pdf.op === "split")
-    run.disabled =
-      !(state.pdf.preview && state.pdf.preview.ok) || state.pdf.busy;
+  if (run && p.op === "split")
+    run.disabled = !(p.preview && p.preview.ok) || p.busy;
 }
 
 function schedulePreview(immediate = false) {
@@ -1088,6 +1151,24 @@ const ACTIONS = {
     p.error = null;
     resetPreview();
     render();
+    schedulePreview(true);
+  },
+  "toggle-page": (el, e) => {
+    const p = state.pdf;
+    const n = Number(el.dataset.v);
+    if (e.shiftKey && p.anchor) {
+      const [a, b] = [Math.min(p.anchor, n), Math.max(p.anchor, n)];
+      for (let i = a; i <= b; i++) p.selected.add(i);
+    } else {
+      if (p.selected.has(n)) p.selected.delete(n);
+      else p.selected.add(n);
+      p.anchor = n;
+    }
+    p.ranges = pagesToRanges(p.selected);
+    p.error = null;
+    const input = document.getElementById("ranges");
+    if (input) input.value = p.ranges;
+    syncGrid();
     schedulePreview(true);
   },
   "set-level": (el) => {
