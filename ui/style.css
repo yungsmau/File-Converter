@@ -510,3 +510,21 @@ body.dragging .add { border-color: var(--accent); background: var(--accent-soft)
 .btn.small .where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .view > .out { max-width: none; }
 .actions > .out { margin-bottom: 28px; }
+
+/* ---------- Миниатюры файлов ---------- */
+.thumb { --w: 30px; --h: 38px; flex: none; width: var(--w); height: var(--h); display: grid; place-items: center; }
+.thumb.md { --w: 54px; --h: 70px; }
+.thumb.lg { --w: 84px; --h: 108px; }
+.thumb img { box-sizing: border-box; max-width: var(--w); max-height: var(--h); display: block; border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); background: #fff; }
+
+/* Увеличенная миниатюра при наведении */
+.zoom { position: fixed; z-index: 50; pointer-events: none; padding: 5px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28); }
+.zoom img { display: block; max-width: 260px; max-height: 340px; border-radius: 5px; }
+
+/* Результат разделения: плитки с миниатюрами */
+.done-box { flex: 0 1 auto; min-height: 0; max-height: 100%; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 16px 10px; overflow-y: auto; min-height: 0; padding: 4px 2px; }
+.out-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; text-align: center; }
+.out-tile .nm { max-width: 100%; font-size: 12.5px; font-weight: 650; }
+.out-tile .mt { font-size: 11.5px; color: var(--muted); }
+.gallery.compact { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 12px 8px; overflow: visible; }

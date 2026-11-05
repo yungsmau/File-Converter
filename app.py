@@ -15,7 +15,7 @@ class Api:
     """Методы без подчеркивания видны из JS: window.pywebview.api.<имя>(). Вся логика живет в core.service."""
 
     def formats(self):
-        return service.supported_formats()
+        return service.formats()
 
     def operations(self):
         return service.operations()
@@ -42,6 +42,9 @@ class Api:
 
     def split_preview(self, path, options=None, out_name=None):
         return service.split_preview(path, options, out_name)
+
+    def thumbnail(self, path, page=0, width=120):
+        return service.thumbnail(path, page, width)
 
     def reveal(self, path):
         service.reveal_in_folder(path)
@@ -71,7 +74,7 @@ if __name__ == "__main__":
         str(UI_DIR / "index.html"),
         js_api=Api(),
         width=640,
-        height=600,
-        min_size=(560, 560),
+        height=680,
+        min_size=(560, 620),
     )
     webview.start(bind_events, window)

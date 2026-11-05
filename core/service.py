@@ -2,6 +2,8 @@
 которые без проблем ходят через мост pywebview. Ничего не знает про окно, поэтому тестируется отдельно.
 """
 
+import base64
+import io
 import subprocess
 import sys
 from functools import wraps
@@ -14,7 +16,12 @@ from PIL import Image
 from core import images
 from core.errors import ConversionError
 from core.pdf_tools import OPERATIONS, preview_split, run_operation
-from core.registry import CONVERTERS, convert, supported_formats, targets_for  # noqa: F401 (supported_formats нужен app.py)
+from core.registry import (
+    CONVERTERS,
+    convert,
+    supported_formats,
+    targets_for,
+)
 from core.utils import format_size, safe_name
 
 # что окно вообще имеет право передавать в качестве настроек (все остальное отбрасывается)
@@ -110,6 +117,11 @@ def operations() -> list[dict]:
         {"id": op.id, "title": op.title, "multi": op.multi, "accepts": list(op.accepts)}
         for op in OPERATIONS.values()
     ]
+
+
+def formats() -> list[dict]:
+    """Какие форматы открываем и сохраняем: для подскази в окне."""
+    return supported_formats()
 
 
 def dialog_filters(accept: list[str] | None) -> tuple[str, ...]:
@@ -211,6 +223,44 @@ def split_preview(
         Path(path), clean_options(raw_options), _clean_stem(out_name, ".pdf") or None
     )
     return {"ok": True, "parts": parts}
+
+
+@_guard
+def thumbnail(path: str, page: int = 0, width: int = 120) -> dict:
+    """Миниатюра страницы PDF (по умолчанию первой) или картинки. Отдается как data-URL: окно вставляет ее прямо в <img>"""
+    src = Path(path)
+    if not src.exists():
+        raise ConversionError(f"Файл не найден: {src}")
+    width = max(16, min(int(width), 600))
+
+    if src.suffix.lower() == ".pdf":
+        with pymupdf.open(src) as doc:
+            if doc.needs_pass:
+                raise ConversionError("Защищен паролем")
+            if not 0 <= page < doc.page_count:
+                raise ConversionError("Нет такой страницы")
+            sheet = doc[page]
+            scale = min(width / sheet.rect.width, width * 2 / sheet.rect.height)
+            pixmap = sheet.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
+            data = pixmap.tobytes("jpeg", jpg_quality=80)
+
+    else:
+        img = images.read_image(src, {})
+        img.thumbnail((width, width * 2))
+        if img.mode in ("RGBA", "LA", "P"):
+            rgba = img.convert("RGBA")
+            img = Image.new("RGBA", rgba.size, "white")
+            img.paste(rgba, mask=rgba.getchannel("A"))
+        else:
+            img = img.convert("RGB")
+        buffer = io.BytesIO()
+        img.save(buffer, "JPEG", quality=80)
+        data = buffer.getvalue()
+
+    return {
+        "ok": True,
+        "data": "data:image/jpeg;base64," + base64.b64encode(data).decode(),
+    }
 
 
 def reveal_in_folder(path: str) -> None:

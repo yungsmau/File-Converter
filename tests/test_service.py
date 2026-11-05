@@ -110,3 +110,44 @@ def test_tools_use_custom_name(make_pdf):
         "Часть_pages-1-2.pdf",
         "Часть_page-3.pdf",
     ]
+
+
+def test_thumbnail_of_pdf_and_image(make_pdf, make_png):
+    import base64
+    import io
+
+    from PIL import Image
+
+    for path in (make_pdf("t.pdf", 3), make_png("t.png", size=(400, 300))):
+        result = service.thumbnail(str(path), 0, 100)
+        assert result["ok"] is True and result["data"].startswith(
+            "data:image/jpeg;base64,"
+        )
+        img = Image.open(io.BytesIO(base64.b64decode(result["data"].split(",", 1)[1])))
+        assert img.width <= 100
+
+
+def test_thumbnail_errors_are_plain_dicts(make_pdf, tmp_path):
+    assert service.thumbnail(str(make_pdf("t.pdf", 2)), 5)["ok"] is False
+    broken = tmp_path / "x.pdf"
+    broken.write_bytes(b"not a pdf")
+    assert service.thumbnail(str(broken))["ok"] is False
+    assert service.thumbnail(str(tmp_path / "нет.png"))["ok"] is False
+
+
+def test_thumbnail_fits_tall_pages(tmp_path):
+    import base64
+    import io
+
+    import pymupdf
+    from PIL import Image
+
+    path = tmp_path / "long.pdf"
+    doc = pymupdf.open()
+    doc.new_page(width=300, height=3000)
+    doc.save(path)
+    doc.close()
+
+    data = service.thumbnail(str(path), 0, 100)["data"]
+    img = Image.open(io.BytesIO(base64.b64decode(data.split(",", 1)[1])))
+    assert img.width <= 100 and img.height <= 200

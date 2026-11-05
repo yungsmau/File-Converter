@@ -1,7 +1,9 @@
+__pycahce__/
 installer/output/
 dmg-root/
-__pycahce__/
-core/__pycahce__/
+tests/__pycache__/
+core/__pycache__/
+scripts/
 *.рус
 .venv/
 venv/

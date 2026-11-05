@@ -127,7 +127,12 @@ def preview_split(src: Path, options: Options, stem: str | None = None) -> list[
     finally:
         doc.close()
     return [
-        {"name": _part_name(stem or src.stem, a, b, total), "pages": b - a + 1}
+        {
+            "name": _part_name(stem or src.stem, a, b, total),
+            "pages": b - a + 1,
+            "first": a,
+            "last": b,
+        }
         for a, b in plan_split(total, options)
     ]
 

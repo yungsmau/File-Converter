@@ -34,6 +34,7 @@ const state = {
   },
 };
 
+const THUMBS = {}; // пусть -> data-url миниатюры.
 let OPS = []; // операции из Python: id, multi, accepts
 let FORMATS = []; // форматы из Python для подсказки "?"
 
@@ -223,6 +224,121 @@ function fileMeta(f) {
 function spinnerLabel(text) {
   return `<span class="spinner" aria-hidden="true"></span>${esc(text)}`;
 }
+
+// Ключ миниатюры: файл + номер страницы (с нуля)
+const thumbKey = (f) => `${f.path}#${f.page || 0}`;
+const ICON_SIZE = { sm: 26, md: 36, lg: 60 };
+
+// size: "sm" в строке списка, "md" в предпросмотре разделения, "lg" в результате
+// Миниатюра файла: настоящая, если уже загружена, иначе значок формата
+function thumb(f, size = "sm") {
+  const key = thumbKey(f);
+  const url = THUMBS[key];
+  return `<span class="thumb ${size}" data-thumb="${esc(key)}" data-path="${esc(f.path)}" data-page="${f.page || 0}" ${url ? "" : "data-lazy"}>${url ? `<img src="${url}" alt="">` : fileIcon(f.ext, ICON_SIZE[size])}</span>`;
+}
+
+// Подгружает миниатюры по одной и вставляет в уже нарисованные места без перерисовки окна
+async function loadThumbs(files) {
+  for (const f of files) {
+    const key = thumbKey(f);
+    if (key in THUMBS || f.note) continue;
+    THUMBS[key] = false; // помечаем сразу, чтобы не запросить дважды
+    const r = await callApi(() => api().thumbnail(f.path, f.page || 0, 160));
+    if (!r.ok) continue;
+    THUMBS[key] = r.data;
+    for (const el of document.querySelectorAll("[data-thumb]"))
+      if (el.dataset.thumb === key)
+        el.innerHTML = `<img src="${r.data}" alt="">`;
+  }
+}
+
+// Ленивая загрузка: миниатюра запрашивается, только когда ее плитка попала в видимую часть прокручиваемого блока
+let thumbObserver = null;
+function observeThumbs(root) {
+  if (thumbObserver) thumbObserver.disconnect();
+  thumbObserver = new IntersectionObserver(
+    (entries) => {
+      for (const en of entries) {
+        if (!en.isIntersecting) continue;
+        thumbObserver.unobserve(en.target);
+        loadThumbs([
+          {
+            path: en.target.dataset.path,
+            page: Number(en.target.dataset.page),
+            ext: ".pdf",
+          },
+        ]);
+      }
+    },
+    { root, roogMargin: "120px" },
+  );
+  root
+    .querySelectorAll(".thumb[data-lazy")
+    .forEach((el) => thumbObserver.observe(el));
+}
+
+// ---------- Увеличение миниатюры при наведении ----------
+const BIG = {}; // путь -> Promise с data-URL крупной картинки (грузится один раз)
+let zoomFor = null;
+
+function zoomBox() {
+  let el = document.getElementById("zoom");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "zoom";
+    el.className = "zoom";
+    el.hidden = true;
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function hideZoom() {
+  zoomFor = null;
+  const el = document.getElementById("zoom");
+  if (el) el.hidden = true;
+}
+
+async function showZoom(target) {
+  const key = target.dataset.thumb;
+  if (!THUMBS[key]) return; // нет даже маленькой миниатюры: увеличивать нечего
+  zoomFor = key;
+  BIG[key] ??= callApi(() =>
+    api().thumbnail(target.dataset.path, Number(target.dataset.page), 360),
+  ).then((r) => (r.ok ? r.data : ""));
+  const url = await BIG[key];
+  if (!url || zoomFor !== key) return; // пока грузилось, курсор ушёл
+  const img = new Image();
+  img.src = url;
+  await img.decode();
+  if (zoomFor !== key) return;
+  const box = zoomBox();
+  box.replaceChildren(img);
+  box.hidden = false;
+  const r = target.getBoundingClientRect();
+  const gap = 12;
+  // справа от миниатюры; если не помещается, то слева; по вертикали не выходим за окно
+  const left =
+    r.right + gap + box.offsetWidth <= innerWidth
+      ? r.right + gap
+      : Math.max(8, r.left - gap - box.offsetWidth);
+  const top = Math.min(
+    Math.max(8, r.top + r.height / 2 - box.offsetHeight / 2),
+    innerHeight - box.offsetHeight - 8,
+  );
+  box.style.left = `${left}px`;
+  box.style.top = `${top}px`;
+}
+
+document.addEventListener("mouseover", (e) => {
+  const t = e.target.closest && e.target.closest("[data-thumb]");
+  if (t && !t.contains(e.relatedTarget)) showZoom(t);
+});
+document.addEventListener("mouseout", (e) => {
+  const t = e.target.closest && e.target.closest("[data-thumb]");
+  if (t && !t.contains(e.relatedTarget)) hideZoom();
+});
+document.addEventListener("pointerdown", hideZoom);
 
 const sumSize = (files) =>
   formatSize(files.reduce((acc, f) => acc + f.size, 0));
@@ -434,7 +550,7 @@ function viewMerge() {
       <div class="row" data-i="${i}">
         <button type="button" class="handle" data-act="handle" data-i="${i}" aria-label="Переместить ${esc(f.name)}. Стрелки вверх и вниз меняют порядок">${DOTS}</button>
         <span class="num">${i + 1}</span>
-        ${fileIcon(f.ext, 30)}
+        ${thumb(f)}
         <span class="text">
           <span class="name">${nameHtml(f.name)}</span>
           <span class="meta ${meta.warn ? "warn" : ""}">${esc(meta.text)}</span>
@@ -478,13 +594,17 @@ function previewHtml() {
   if (!r.ok)
     return `<div class="error left" role="alert">${esc(r.error)}</div>`;
   const n = r.parts.length;
+  const src = singleFile();
   return `
     <div class="field">
       <div class="head"><label>Получится: ${n} ${plural(n, ["файл", "файла", "файлов"])}</label></div>
-      <div class="chips">${r.parts
+      <div class="gallery compact">${r.parts
         .map(
-          (x) =>
-            `<span class="chip">${esc(x.name)} <span>· ${x.pages} стр.</span></span>`,
+          (x) => `
+        <div class="out-tile" title="${esc(x.name)}">
+          ${thumb({ path: src.path, page: x.first - 1, ext: ".pdf" }, "md")}
+          <span class="nm">${x.first === x.last ? `стр. ${x.first}` : `стр. ${x.first}–${x.last}`}</span>
+        </div>`,
         )
         .join("")}</div>
     </div>`;
@@ -524,9 +644,8 @@ function viewSplit(f) {
       )
       .join("")}</div>
     ${input}
-    <div id="preview" style="overflow:auto;min-height:0">${previewHtml()}</div>
+    <div id="preview" style="overflow:auto;min-height:0;flex:1 1 auto">${previewHtml()}</div>
     ${p.error ? `<div class="error left" role="alert">${esc(p.error)}</div>` : ""}
-    <div style="flex:1"></div>
     ${outRow(p, stem(f.name), ".pdf")}
     <div class="footer">
       <div class="note">К имени добавится номер страницы</div>
@@ -593,10 +712,14 @@ function viewDoneList() {
           ? `Файл создан в папке «${esc(p.result.folder_name)}»`
           : `Создано ${n} ${plural(n, ["файл", "файла", "файлов"])} в папке «${esc(p.result.folder_name)}»`
       }</div>
-      <div class="chips">${outs
+      <div class="gallery">${outs
         .map(
-          (o) =>
-            `<span class="chip">${esc(o.name)} <span>· ${o.pages ? o.pages + " стр. · " : ""}${esc(o.size_text)}</span></span>`,
+          (o) => `
+        <div class="out-tile">
+          ${thumb(o, "lg")}
+          <span class="nm">${nameHtml(o.name)}</span>
+          <span class="mt">${o.pages ? o.pages + " стр. · " : ""}${esc(o.size_text)}</span>
+        </div>`,
         )
         .join("")}</div>
     </div>
@@ -650,6 +773,7 @@ function focusKeyOf(el) {
 }
 
 function render(focusKey) {
+  hideZoom();
   const key = focusKey || focusKeyOf(document.activeElement);
   const tabs = [
     ["convert", "Конвертация"],
@@ -669,6 +793,11 @@ function render(focusKey) {
     </div>
     <div class="view">${state.tab === "convert" ? viewConvert() : viewPdf()}</div>
     ${state.picker ? viewPicker() : ""}`;
+
+  const lazyRoot =
+    document.getElementById("preview") ||
+    document.querySelector(".done-box .gallery");
+  if (lazyRoot) observeThumbs(lazyRoot);
 
   if (key) {
     const target = app.querySelector(key);
@@ -732,6 +861,7 @@ function addPdfFiles(files) {
   resetPreview();
   render();
   schedulePreview(true);
+  loadThumbs(accepted);
 }
 
 function addFiles(files) {
@@ -773,7 +903,10 @@ function resetPreview() {
 
 function updatePreview() {
   const box = document.getElementById("preview");
-  if (box) box.innerHTML = previewHtml();
+  if (box) {
+    box.innerHTML = previewHtml();
+    observeThumbs(box);
+  }
   const run = document.getElementById("run");
   if (run && state.pdf.op === "split")
     run.disabled =
