@@ -108,6 +108,7 @@ const BADGE_COLORS = {
   ".tsv": "#0e7c86",
   ".pdf": "#c23a3a",
   ".txt": "#5e5e66",
+  ".json": "#b7791f",
 };
 const IMAGE_COLOR = "#7b4fd0";
 
@@ -157,6 +158,7 @@ const CAPTIONS = {
   ".tsv": "Через табуляцию",
   ".xlsx": "Таблица Excel",
   ".txt": "Только текст",
+  ".json": "Данные",
 };
 
 const DEFAULT_TARGET = {
@@ -171,6 +173,7 @@ const DEFAULT_TARGET = {
   ".heic": ".jpg",
   ".heif": ".jpg",
   ".pdf": ".jpg",
+  ".json": ".xlsx",
 };
 
 const OP_META = {
@@ -192,6 +195,8 @@ function pickerNote(file, target) {
     return "Каждая страница станет отдельным файлом · 150 DPI";
   if (target === ".csv")
     return "Каждый лист станет отдельным файлом · разделитель «;»";
+  if (target === ".json")
+    return "Каждый лист станет отдельным файлом - первая строка таблицы: название полей";
   if (target === ".tsv")
     return "Каждый лист станет отдельным файлом · разделитель: табуляция";
   if (target === ".jpg") return "Качество 90 · прозрачность заливается белым";
@@ -378,7 +383,7 @@ function viewConvert() {
     return dropZone({
       title: "Перетащите файл сюда",
       sub: "или нажмите, чтобы выбрать",
-      tags: ["Excel · CSV", "JPG · PNG · HEIC · WebP", "PDF"],
+      tags: ["Excel · CSV · JSON", "JPG · PNG · HEIC · WebP", "PDF"],
       hint: c.hint,
     });
   }

@@ -34,7 +34,7 @@ DEFAULT_OPTIONS: dict[str, Any] = {
 }
 ALLOWED_OPTIONS = set(DEFAULT_OPTIONS) | {"ranges", "every"}
 
-TABLE_EXTS = {".xlsx", ".xlsm", ".xls", ".csv", ".tsv"}
+TABLE_EXTS = {".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".json"}
 
 
 def clean_options(raw: dict | None) -> dict:

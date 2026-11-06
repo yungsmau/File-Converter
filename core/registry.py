@@ -61,11 +61,13 @@ _register_family(
         ".xls": tables.read_xls,
         ".csv": tables.read_csv,
         ".tsv": tables.read_csv,
+        ".json": tables.read_json,
     },
     writers={
         ".xlsx": tables.write_xlsx,
         ".csv": tables.write_csv,
         ".tsv": tables.write_csv,
+        ".json": tables.write_json,
     },
 )
 
