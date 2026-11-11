@@ -1,9 +1,7 @@
 __pycahce__/
 installer/output/
 dmg-root/
-tests/__pycache__/
-core/__pycache__/
-scripts/
+compare_out/
 *.рус
 .venv/
 venv/
