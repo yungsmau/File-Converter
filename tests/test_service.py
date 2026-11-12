@@ -56,7 +56,7 @@ def test_split_preview_service(make_pdf):
 
 def test_operations_listing():
     ops = {o["id"]: o for o in service.operations()}
-    assert set(ops) == {"merge", "split", "compress"}
+    assert set(ops) == {"merge", "split", "compress", "shrink"}
     assert ops["merge"]["multi"] is True and ".pdf" in ops["split"]["accepts"]
 
 
@@ -151,3 +151,22 @@ def test_thumbnail_fits_tall_pages(tmp_path):
     data = service.thumbnail(str(path), 0, 100)["data"]
     img = Image.open(io.BytesIO(base64.b64decode(data.split(",", 1)[1])))
     assert img.width <= 100 and img.height <= 200
+
+
+def test_shrink_through_service(tmp_path):
+    from PIL import Image
+
+    src = tmp_path / "photo.jpg"
+    Image.effect_noise((1600, 1200), 60).convert("RGB").save(src, quality=95)
+    result = service.run_tool("shrink", [str(src)], {"max_side": 800, "quality": 80})
+    assert result["ok"] is True
+    out = result["outputs"][0]
+    assert (
+        out["name"] == "photo_small.jpg"
+        and out["dims"] == "800 × 600"
+        and result["saved_percent"] > 0
+    )
+
+    named = service.run_tool("shrink", [str(src)], {"max_side": 400}, None, "мини")
+    assert named["outputs"][0]["name"] == "мини.jpg"
+    assert service.run_tool("shrink", [str(tmp_path / "a.pdf")])["ok"] is False

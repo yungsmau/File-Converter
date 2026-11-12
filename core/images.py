@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -139,3 +140,41 @@ WRITERS = {
     ".tiff": write_tiff,
     ".pdf": write_pdf,
 }
+
+# ---------- уменьшение фото ----------
+
+# PNG и WebP остаются собой, всё остальное (JPEG, HEIC, BMP, TIFF, GIF) при уменьшении становится JPEG
+_SHRINK_KEEP = {".png": ".png", ".webp": ".webp"}
+# Эти расширения означают один и тот же формат (нужно, чтобы понять "формат не поменялся")
+_SAME_FORMAT = {".jpeg": ".jpg", ".tif": ".tiff"}
+
+
+def shrink_ext(path):
+    """В каком расширении сохранится уменьшенное фото."""
+    return _SHRINK_KEEP.get(path.suffix.lower(), ".jpg")
+
+
+def shrink(sources, output, options):
+    src = sources[0]
+    try:
+        max_side = max(0, int(options.get("max_side") or 0))
+    except (TypeError, ValueError):
+        raise ConversionError("Максимальный размер должен быть числом") from None
+
+    target = output or src.with_name(f"{src.stem}_small{shrink_ext(src)}")
+    img = read_image(src, options)
+    resized = bool(max_side) and max(img.size) > max_side
+    if resized:
+        # thumbnail меняет размер на месте, сохраняет пропорции и никогда не увеличивает
+        img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+
+    [result] = WRITERS[target.suffix.lower()](img, target, options)
+
+    # Размер не менялся, формат тот же, а файл вышел не легче: отдаём оригинал как есть
+    same_format = (
+        _SAME_FORMAT.get(src.suffix.lower(), src.suffix.lower())
+        == result.suffix.lower()
+    )
+    if not resized and same_format and result.stat().st_size >= src.stat().st_size:
+        shutil.copyfile(src, result)
+    return [result]

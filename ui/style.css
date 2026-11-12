@@ -536,3 +536,11 @@ body.dragging .add { border-color: var(--accent); background: var(--accent-soft)
 .pg.on { border-color: var(--accent); background: var(--accent-soft); }
 .pg .n { font-size: 12px; color: var(--muted); }
 .pg.on .n { color: var(--accent); font-weight: 650; }
+
+/* Пакетная конвертация */
+.batch-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.batch-head .sum { font-size: 14px; font-weight: 650; }
+.row .st { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; flex: none; }
+.row .st.ok { color: #fff; background: var(--ok); }
+.row .st.err { color: #fff; background: var(--err); }
+.spinner.dark { border-color: var(--line); border-top-color: var(--accent); flex: none; }

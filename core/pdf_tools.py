@@ -235,6 +235,9 @@ OPERATIONS: dict[str, Operation] = {
         Operation("merge", "Объединить", (".pdf", *images.READ_EXTS), True, merge),
         Operation("split", "Разделить", (".pdf",), False, split),
         Operation("compress", "Сжать", (".pdf",), False, compress),
+        Operation(
+            "shrink", "Уменьшить фото", tuple(images.READ_EXTS), False, images.shrink
+        ),
     )
 }
 

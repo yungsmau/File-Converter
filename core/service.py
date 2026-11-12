@@ -32,7 +32,7 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "background": "white",
     "level": "medium",
 }
-ALLOWED_OPTIONS = set(DEFAULT_OPTIONS) | {"ranges", "every"}
+ALLOWED_OPTIONS = set(DEFAULT_OPTIONS) | {"ranges", "every", "max_side"}
 
 TABLE_EXTS = {".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".json"}
 
@@ -131,7 +131,7 @@ def dialog_filters(accept: list[str] | None) -> tuple[str, ...]:
 
 
 # ---------- действия ----------
-DEFAULT_SUFFIX = {"merge": "_merged", "compress": "_compressed"}
+DEFAULT_SUFFIX = {"merge": "_merged", "compress": "_compressed", "shrink": "_small"}
 
 
 def describe_folder(path: str) -> dict:
@@ -208,8 +208,10 @@ def run_tool(
     output = None
     if sources:
         first = sources[0]
+        # У фото формат результата зависит от исходника
+        ext = images.shrink_ext(first) if op_id == "shrink" else ".pdf"
         output = _target(
-            first, ".pdf", out_dir, out_name, first.stem + DEFAULT_SUFFIX.get(op_id, "")
+            first, ext, out_dir, out_name, first.stem + DEFAULT_SUFFIX.get(op_id, "")
         )
     outputs = run_operation(op_id, sources, clean_options(raw_options), output)
     return _result(sources, outputs)

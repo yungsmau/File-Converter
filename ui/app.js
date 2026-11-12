@@ -1,31 +1,17 @@
 "use strict";
 
-/* ====================================================================
-   Состояние. Все, что видно в окне, рисуется из этого объекта функцией render().
-   ==================================================================== */
-const state = {
-  tab: "convert", // "convert" | "pdf"
-  help: false, // открыта ли подсказка по форматам
-  picker: false, // открыт ли выбор формата
-  convert: {
-    file: null,
-    target: null,
-    busy: false,
-    result: null,
-    error: null,
-    hint: null,
-    outName: "", // имя результата без расширения ("" = по умолчанию)
-    outDir: null, // {path, name} выбранной папки (null = рядом с исходным)
-  },
-  pdf: {
-    op: "merge", // "merge" | "split" | "compress"
+// Состояние одной вкладки-инструмента: у "PDF-инструментов" и у "Фото" оно одинаковое по форме
+function newToolState(op) {
+  return {
+    op,
     files: [],
     busy: false,
     result: null,
     error: null,
     hint: null,
     level: "medium",
-    splitMode: "ranges", // "each" | "ranges" | "every"
+    shrink: "medium",
+    splitMode: "ranges", // each | ranges | every
     ranges: "",
     every: 2,
     preview: null,
@@ -33,9 +19,43 @@ const state = {
     anchor: null,
     outName: "",
     outDir: null,
-  },
+  };
+}
+
+// Состояние вкладки "Конвертация"
+function newConvertState(outDir = null) {
+  return {
+    files: [],
+    target: null,
+    busy: false,
+    finished: false,
+    status: {}, // state: run, ok, error
+    result: null,
+    error: null,
+    hint: null,
+    outName: "",
+    outDir,
+  };
+}
+
+const commonTargets = (files) =>
+  files.length
+    ? files[0].targets.filter((t) => files.every((f) => f.targets.includes(t)))
+    : [];
+
+/* ====================================================================
+    Состояние. Все, что видно в окне, рисуется из этого объекта функцией render().
+    ==================================================================== */
+const state = {
+  tab: "convert", // "convert" | "pdf" | "photo"
+  help: false, // открыта ли подсказка по форматам
+  picker: false, // открыт ли выбор формата
+  convert: newConvertState(),
+  pdf: newToolState("merge"),
+  photo: newToolState("shrink"),
 };
 
+const tools = () => (state.tab === "photo" ? state.photo : state.pdf);
 const THUMBS = {}; // пусть -> data-url миниатюры.
 let OPS = []; // операции из Python: id, multi, accepts
 let FORMATS = []; // форматы из Python для подсказки "?"
@@ -44,8 +64,8 @@ const api = () => window.pywebview.api;
 const app = document.getElementById("app");
 
 /* ====================================================================
-   Мелкие помощники
-   ==================================================================== */
+    Мелкие помощники
+    ==================================================================== */
 const esc = (s) =>
   String(s).replace(
     /[&<>"']/g,
@@ -98,8 +118,8 @@ const opInfo = (id) =>
   };
 
 /* ====================================================================
-   Иконки
-   ==================================================================== */
+    Иконки
+    ==================================================================== */
 const BADGE_COLORS = {
   ".xlsx": "#1b7a4a",
   ".xlsm": "#1b7a4a",
@@ -116,11 +136,11 @@ function fileIcon(ext, width = 72) {
   const color = BADGE_COLORS[ext] || IMAGE_COLOR;
   const height = Math.round((width * 76) / 64);
   return `<svg width="${width}" height="${height}" viewBox="0 0 64 76" aria-hidden="true">
-    <path d="M14 2h28l16 16v48a4 4 0 0 1-4 4H14a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4z" fill="var(--surface)" stroke="var(--page-line)" stroke-width="1.5"/>
-    <path d="M42 2v12a4 4 0 0 0 4 4h12" fill="var(--page-fold)" stroke="var(--page-line)" stroke-width="1.5"/>
-    <rect x="2" y="38" width="44" height="21" rx="5" fill="${color}"/>
-    <text x="24" y="53" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="12" font-weight="700" fill="#fff" letter-spacing="0.4">${esc(extLabel(ext))}</text>
-  </svg>`;
+      <path d="M14 2h28l16 16v48a4 4 0 0 1-4 4H14a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4z" fill="var(--surface)" stroke="var(--page-line)" stroke-width="1.5"/>
+      <path d="M42 2v12a4 4 0 0 0 4 4h12" fill="var(--page-fold)" stroke="var(--page-line)" stroke-width="1.5"/>
+      <rect x="2" y="38" width="44" height="21" rx="5" fill="${color}"/>
+      <text x="24" y="53" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="12" font-weight="700" fill="#fff" letter-spacing="0.4">${esc(extLabel(ext))}</text>
+    </svg>`;
 }
 
 const svg = (body, size = 18, extra = "") =>
@@ -134,6 +154,8 @@ const ICONS = {
   split:
     '<path d="M12 3v7M12 10c0 3-5 3-5 7v4M12 10c0 3 5 3 5 7v4M4 18l3 3 3-3M14 18l3 3 3-3"/>',
   compress: '<path d="M12 3v6M9 6l3 3 3-3M12 21v-6M9 18l3-3 3 3M5 12h14"/>',
+  shrink:
+    '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/>',
 };
 
 const CLOSE = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8"/></svg>`;
@@ -144,8 +166,8 @@ const FOLDER = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stro
 const CHEVRON = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3.5l3 3 3-3"/></svg>`;
 
 /* ====================================================================
-   Подписи
-   ==================================================================== */
+    Подписи
+    ==================================================================== */
 const CAPTIONS = {
   ".jpg": "Фото",
   ".png": "Без потерь",
@@ -180,7 +202,37 @@ const OP_META = {
   merge: { title: "Объединить", desc: "Склеить в один PDF" },
   split: { title: "Разделить", desc: "Разбить на части" },
   compress: { title: "Сжать", desc: "Уменьшить размер" },
+  shrink: { title: "Фото", desc: "Уменьшить снимок" },
 };
+
+// пресеты уменьшения фото: длинная сторона в пикселях и качество JPEG/WebP
+const SHRINK_PRESETS = [
+  {
+    id: "light",
+    title: "Легкое",
+    desc: "До 2560 px - качество 90",
+    max_side: 2560,
+    quality: 90,
+  },
+  {
+    id: "medium",
+    title: "Среднее",
+    desc: "До 1920 px - для экрана и почты",
+    max_side: 1920,
+    quality: 85,
+    best: true,
+  },
+  {
+    id: "strong",
+    title: "Сильное",
+    desc: "До 1280 px - для сайта и чатов",
+    max_side: 1280,
+    quality: 75,
+  },
+];
+
+// В каком формате сохранится фото (так же решает Python): PNG и WebP остаются, остальное становится JPEG
+const shrinkExt = (ext) => (ext === ".png" || ext === ".webp" ? ext : ".jpg");
 
 const LEVELS = [
   { id: "low", title: "Легкое", desc: "Без потери качества" },
@@ -350,19 +402,23 @@ document.addEventListener("pointerdown", hideZoom);
 const sumSize = (files) =>
   formatSize(files.reduce((acc, f) => acc + f.size, 0));
 
-// Строка "Имя + папка" для экранов, где результат ещё не создан. s: state.convert или state.pdf
-function outRow(s, defaultStem, ext) {
+// Строка "Имя + папка" для экранов, где результат ещё не создан. s: state.convert или tools()
+function outRow(s, defaultStem, ext, withName = true) {
   const where = s.outDir ? s.outDir.name : "Рядом с исходным";
   const tip = s.outDir
     ? s.outDir.path
     : "Результат появится в папке исходного файла";
   return `
     <div class="out">
-      <label class="out-name">
+      ${
+        withName
+          ? `<label class="out-name">
         <span class="lbl">Имя</span>
         <input id="outname" class="input" type="text" value="${esc(s.outName)}" placeholder="${esc(defaultStem)}" autocomplete="off" spellcheck="false">
         <span class="out-ext">${esc(ext)}</span>
-      </label>
+      </label>`
+          : `<span class="out-name"><span class="hint">Имена сохранятся прежние</span></span>`
+      }
       <span class="out-folder">
         <button type="button" class="btn ghost small" data-act="pick-folder" title="${esc(tip)}">${FOLDER}<span class="where">${esc(where)}</span></button>
         ${s.outDir ? `<button type="button" class="icon-btn" data-act="reset-folder" aria-label="Сохранять рядом с исходным">${CLOSE}</button>` : ""}
@@ -370,7 +426,7 @@ function outRow(s, defaultStem, ext) {
     </div>`;
 }
 
-const currentOut = () => (state.tab === "convert" ? state.convert : state.pdf);
+const currentOut = () => (state.tab === "convert" ? state.convert : tools());
 // [папка, имя] для вызовов Python
 const outArgs = (s) => [s.outDir ? s.outDir.path : null, s.outName];
 
@@ -379,16 +435,111 @@ const outArgs = (s) => [s.outDir ? s.outDir.path : null, s.outName];
    ==================================================================== */
 function viewConvert() {
   const c = state.convert;
-  if (!c.file) {
+  if (!c.files.length) {
     return dropZone({
-      title: "Перетащите файл сюда",
-      sub: "или нажмите, чтобы выбрать",
+      title: "Перетащите файлы сюда",
+      sub: "можно сразу несколько · или нажмите, чтобы выбрать",
       tags: ["Excel · CSV · JSON", "JPG · PNG · HEIC · WebP", "PDF"],
       hint: c.hint,
     });
   }
+  return c.files.length === 1 ? viewConvertOne(c) : viewConvertBatch(c);
+}
 
-  const f = c.file;
+// Несколько файлов: список со статусом у каждого, один формат на всех
+function viewConvertBatch(c) {
+  const n = c.files.length;
+  const noun = (k) => plural(k, ["файл", "файла", "файлов"]);
+  const rows = c.files
+    .map((f) => {
+      const st = c.status[f.path];
+      const meta = fileMeta(f);
+      let text = meta.text;
+      let warn = meta.warn;
+      let side = c.busy
+        ? ""
+        : `<button type="button" class="icon-btn" data-act="convert-remove" data-v="${esc(f.path)}" aria-label="Убрать ${esc(f.name)}">${CLOSE}</button>`;
+      if (st && st.state === "run")
+        side = `<span class="spinner dark" aria-label="Конвертируется"></span>`;
+      if (st && st.state === "ok") {
+        const outs = st.outs;
+        text =
+          outs.length === 1
+            ? `${outs[0].name} · ${outs[0].size_text}`
+            : `${outs.length} ${noun(outs.length)}`;
+        side = `<span class="st ok" aria-label="Готово">${CHECK}</span>`;
+      }
+      if (st && st.state === "error") {
+        text = st.text;
+        warn = true;
+        side = `<span class="st err" aria-label="Ошибка">${CLOSE}</span>`;
+      }
+      return `
+      <div class="row">
+        ${fileIcon(f.ext, 34)}
+        <span class="text">
+          <span class="name">${nameHtml(f.name)}</span>
+          <span class="meta ${warn ? "warn" : ""}">${esc(text)}</span>
+        </span>
+        ${side}
+      </div>`;
+    })
+    .join("");
+
+  const done = c.finished;
+  const ok = c.files.filter(
+    (f) => c.status[f.path] && c.status[f.path].state === "ok",
+  ).length;
+  let bottom;
+  if (done) {
+    const summary =
+      ok === 0
+        ? "Не удалось конвертировать ни один файл"
+        : ok === n
+          ? `Готово. ${n} ${noun(n)} в папке «${esc(c.result.folder_name)}»`
+          : `Готово ${ok} из ${n}. Остальные не получились: причина у каждого в списке`;
+    bottom = `
+      <div class="actions">
+        <div class="${ok === n ? "status-ok" : "error"}" role="status">${summary}</div>
+        <div class="btns">
+          ${ok ? `<button type="button" class="btn" data-act="reveal">Показать в папке</button>` : ""}
+          <button type="button" class="btn ghost" data-act="convert-reset">Конвертировать ещё</button>
+        </div>
+      </div>`;
+  } else {
+    const current =
+      Object.values(c.status).filter((x) => x.state !== "run").length + 1;
+    bottom = `
+      <div class="actions">
+        ${c.busy ? "" : outRow(c, "", c.target, false)}
+        ${c.error ? `<div class="error" role="alert">${esc(c.error)}</div>` : ""}
+        <button type="button" class="btn" data-act="convert-run" ${c.busy ? "disabled" : ""}>
+          ${c.busy ? spinnerLabel(`Конвертируем ${current} из ${n}…`) : `Конвертировать ${n} ${noun(n)}`}
+        </button>
+      </div>`;
+  }
+
+  return `
+    <div class="batch-head">
+      <div class="sum">${n} ${noun(n)} · ${sumSize(c.files)}</div>
+      ${
+        done || c.busy
+          ? ""
+          : `<button type="button" class="btn ghost small" data-act="open-picker" aria-haspopup="dialog">Формат: ${esc(extLabel(c.target))} ${CHEVRON}</button>`
+      }
+    </div>
+    <div class="list" id="files">${rows}</div>
+    ${
+      done || c.busy
+        ? ""
+        : `<button type="button" class="add" data-act="pick"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 2v10M2 7h10"/></svg>Добавить файлы</button>`
+    }
+    <div style="flex:1"></div>
+    ${bottom}`;
+}
+
+function viewConvertOne(c) {
+  const f = c.files[0];
   const meta = fileMeta(f);
   const done = c.result;
 
@@ -458,7 +609,7 @@ function viewConvert() {
 
 function viewPicker() {
   const c = state.convert;
-  const tiles = c.file.targets
+  const tiles = commonTargets(c.files)
     .map(
       (t) => `
       <button type="button" class="tile" role="radio" aria-checked="${t === c.target}" data-act="choose-target" data-v="${t}">
@@ -472,11 +623,15 @@ function viewPicker() {
     <div class="backdrop" data-act="close-picker-backdrop">
       <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="picker-title">
         <header>
-          <h2 id="picker-title">Во что превратить ${esc(extLabel(c.file.ext))}?</h2>
+          <h2 id="picker-title">Во что превратить ${
+            c.files.length === 1
+              ? esc(extLabel(c.files[0].ext))
+              : `${c.files.length} ${plural(c.files.length, ["файл", "файла", "файлов"])}`
+          }?</h2>
           <button type="button" class="icon-btn" data-act="close-picker" aria-label="Закрыть">${CLOSE}</button>
         </header>
         <div class="grid" role="radiogroup" aria-label="Формат">${tiles}</div>
-        <footer>${esc(pickerNote(c.file, c.target))}</footer>
+        <footer>${esc(pickerNote(c.files[0], c.target))}</footer>
       </div>
     </div>`;
 }
@@ -484,10 +639,11 @@ function viewPicker() {
 /* ====================================================================
    Экран "PDF-инструменты"
    ==================================================================== */
-const singleFile = () => state.pdf.files.find((f) => f.ext === ".pdf") || null;
+const singleFile = () =>
+  tools().files.find((f) => opInfo(tools().op).accepts.includes(f.ext)) || null;
 
 function opsBig() {
-  const p = state.pdf;
+  const p = tools();
   return `<div class="ops" role="radiogroup" aria-label="Операция">${[
     "merge",
     "split",
@@ -504,7 +660,7 @@ function opsBig() {
 }
 
 function opsCompact() {
-  const p = state.pdf;
+  const p = tools();
   return `<div class="seg wide" role="radiogroup" aria-label="Операция">${[
     "merge",
     "split",
@@ -520,7 +676,15 @@ function opsCompact() {
 }
 
 function pdfDropZone(hint) {
-  const multi = opInfo(state.pdf.op).multi;
+  const multi = opInfo(tools().op).multi;
+  if (state.tab === "photo") {
+    return dropZone({
+      title: "Перетащите фото сюда",
+      sub: "или нажмите, чтобы выбрать",
+      tags: ["JPG · PNG · HEIC · WebP"],
+      hint,
+    });
+  }
   return dropZone({
     title: multi ? "Перетащите PDF или картинки сюда" : "Перетащите PDF сюда",
     sub: multi
@@ -545,7 +709,7 @@ function singleRow(f) {
 }
 
 function viewMerge() {
-  const p = state.pdf;
+  const p = tools();
   const rows = p.files
     .map((f, i) => {
       const meta = f.note
@@ -589,7 +753,7 @@ function viewMerge() {
 }
 
 function previewHtml() {
-  const p = state.pdf;
+  const p = tools();
   const r = p.preview;
   if (!r) {
     return `<div class="field"><span class="hint">${
@@ -646,7 +810,7 @@ function pagesToRanges(pages) {
 function pageGrid(f) {
   const tiles = Array.from({ length: f.pages || 0 }, (_, i) => {
     const n = i + 1;
-    const on = state.pdf.selected.has(n);
+    const on = tools().selected.has(n);
     return `<button type="button" class="pg ${on ? "on" : ""}" data-act="toggle-page" data-v="${n}" aria-pressed="${on}" aria-label="Страница ${n}">${thumb({ path: f.path, page: i, ext: ".pdf" }, "md")}<span class="n">${n}</span></button>`;
   }).join("");
   return `<div id="pagegrid" class="pagegrid">${tiles}</div>`;
@@ -654,7 +818,7 @@ function pageGrid(f) {
 
 // Подсветка сетки по состоянию p.selected (без перерисовки: иначе сбросится прокрутка)
 function syncGrid() {
-  const sel = state.pdf.selected;
+  const sel = tools().selected;
   for (const el of document.querySelectorAll("#pagegrid .pg")) {
     const on = sel.has(Number(el.dataset.v));
     el.classList.toggle("on", on);
@@ -663,7 +827,7 @@ function syncGrid() {
 }
 
 function viewSplit(f) {
-  const p = state.pdf;
+  const p = tools();
   const modes = [
     ["each", "Каждая страница"],
     ["ranges", "По диапазонам"],
@@ -707,7 +871,7 @@ function viewSplit(f) {
 }
 
 function viewCompress(f) {
-  const p = state.pdf;
+  const p = tools();
   const r = p.result;
   const levels = LEVELS.map(
     (l) => `
@@ -754,8 +918,62 @@ function viewCompress(f) {
     <div class="footer">${footer}</div>`;
 }
 
+function viewPhoto() {
+  const f = singleFile();
+  return f ? viewShrink(f) : pdfDropZone(tools().hint);
+}
+
+function viewShrink(f) {
+  const p = tools();
+  const r = p.result;
+  const ext = shrinkExt(f.ext);
+  const presets = SHRINK_PRESETS.map(
+    (l) => `
+    <button type="button" class="level" role="radio" aria-checked="${p.shrink === l.id}" data-act="set-shrink" data-v="${l.id}">
+      <span class="t">${l.title}${l.best ? '<span class="best">лучший выбор</span>' : ""}</span>
+      <span class="d">${l.desc}</span>
+    </button>`,
+  ).join("");
+
+  let middle = "";
+  if (r) {
+    const out = r.outputs[0];
+    const ratio = r.source_size
+      ? Math.min(100, Math.round((100 * out.size) / r.source_size))
+      : 100;
+    middle = `
+      <div class="result" role="status">
+        <div class="line">
+          <div class="sizes">
+            <span class="before">${esc(r.source_size_text)}</span>
+            <svg width="22" height="12" viewBox="0 0 22 12" fill="none" stroke="var(--ok)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6h16M13 2l5 4-5 4"/></svg>
+            <span class="after">${esc(out.size_text)}</span>
+          </div>
+          <span class="pct">−${r.saved_percent}%</span>
+        </div>
+        <div class="bar"><i style="width:${ratio}%"></i></div>
+        <div class="note">${esc(f.dims || "")}${f.dims && out.dims ? " → " : ""}${esc(out.dims || "")}${r.saved_percent === 0 ? " · Файл и так лёгкий: оставили как есть" : ""}</div>
+      </div>`;
+  }
+
+  const footer = r
+    ? `<button type="button" class="btn ghost" data-act="result-again">Заново</button>
+       <button type="button" class="btn" data-act="reveal">Показать в папке</button>`
+    : `<div class="note">${ext === ".png" ? "PNG сохраняется без потерь, меняется только размер" : ""}</div>
+       <button type="button" class="btn" data-act="run" ${p.busy ? "disabled" : ""}>${p.busy ? spinnerLabel("Уменьшаем…") : "Уменьшить"}</button>`;
+
+  return `
+    ${singleRow(f)}
+    <div class="levels" role="radiogroup" aria-label="Насколько уменьшить">${presets}</div>
+    ${middle}
+    ${p.error ? `<div class="error left" role="alert">${esc(p.error)}</div>` : ""}
+    <div style="flex:1"></div>
+    ${r ? "" : outRow(p, `${stem(f.name)}_small`, ext)}
+    <div class="footer">${footer}</div>`;
+}
+
 function viewDoneList() {
-  const p = state.pdf;
+  const p = tools();
   const outs = p.result.outputs;
   const n = outs.length;
   return `
@@ -784,7 +1002,7 @@ function viewDoneList() {
 }
 
 function viewPdf() {
-  const p = state.pdf;
+  const p = tools();
   if (!p.files.length) {
     return `${opsBig()}${pdfDropZone(p.hint)}`;
   }
@@ -831,6 +1049,7 @@ function render(focusKey) {
   const tabs = [
     ["convert", "Конвертация"],
     ["pdf", "PDF-инструменты"],
+    ["photo", "Фото"],
   ]
     .map(
       ([id, label]) =>
@@ -844,7 +1063,7 @@ function render(focusKey) {
       <button type="button" class="help-btn" data-act="toggle-help" aria-label="Поддерживаемые форматы" aria-expanded="${state.help}">?</button>
       ${viewHelp()}
     </div>
-    <div class="view">${state.tab === "convert" ? viewConvert() : viewPdf()}</div>
+    <div class="view">${state.tab === "convert" ? viewConvert() : state.tab === "photo" ? viewPhoto() : viewPdf()}</div>
     ${state.picker ? viewPicker() : ""}`;
 
   const lazyRoot =
@@ -871,26 +1090,45 @@ function toast(text) {
 /* ====================================================================
    Работа с файлами
    ==================================================================== */
-function setConvertFile(f) {
+function addConvertFiles(files) {
   const c = state.convert;
-  if (!f.targets.length) {
-    c.hint = `Формат ${extLabel(f.ext) || "этого файла"} пока не поддерживается`;
+  if (c.finished) Object.assign(c, newConvertState(c.outDir));
+  let unsupported = 0;
+  let mixed = 0;
+  for (const f of files) {
+    if (!f.targets.length) unsupported++;
+    else if (c.files.some((x) => x.path === f.path)) continue;
+    else if (!commonTargets([...c.files, f]).length) mixed++;
+    else c.files.push(f);
+  }
+  if (mixed)
+    toast(
+      `Пропущено: ${mixed} ${plural(mixed, ["файл", "файла", "файлов"])}. Для них нет общего формата с остальными`,
+    );
+  if (!c.files.length) {
+    c.hint = unsupported
+      ? `Формат ${extLabel(files[0].ext) || "этого файла"} пока не поддерживается`
+      : c.hint;
     render();
     return;
   }
-  c.file = f;
-  c.target = f.targets.includes(DEFAULT_TARGET[f.ext])
-    ? DEFAULT_TARGET[f.ext]
-    : f.targets[0];
+  const targets = commonTargets(c.files);
+  if (!targets.includes(c.target)) {
+    const first = c.files[0];
+    c.target = targets.includes(DEFAULT_TARGET[first.ext])
+      ? DEFAULT_TARGET[first.ext]
+      : targets[0];
+  }
+  if (c.files.length > 1) c.outName = "";
   c.result = null;
-  c.outName = "";
+  c.status = {};
   c.error = null;
   c.hint = null;
   render();
 }
 
 function addPdfFiles(files) {
-  const p = state.pdf;
+  const p = tools();
   const info = opInfo(p.op);
   const accepted = files.filter((f) => info.accepts.includes(f.ext));
   const skipped = files.length - accepted.length;
@@ -920,9 +1158,9 @@ function addPdfFiles(files) {
 
 function addFiles(files) {
   if (!files || !files.length) return;
-  if (state.convert.busy || state.pdf.busy) return;
+  if (state.convert.busy || state.pdf.busy || state.photo.busy) return;
   state.picker = false;
-  if (state.tab === "convert") setConvertFile(files[0]);
+  if (state.tab === "convert") addConvertFiles(files);
   else addPdfFiles(files);
 }
 
@@ -931,8 +1169,8 @@ window.onFilesDropped = (files) => addFiles(files);
 
 async function pickFiles() {
   if (!window.pywebview) return;
-  const multi = state.tab === "pdf" && opInfo(state.pdf.op).multi;
-  const accept = state.tab === "pdf" ? opInfo(state.pdf.op).accepts : null;
+  const multi = state.tab === "convert" || opInfo(tools().op).multi;
+  const accept = state.tab !== "convert" ? opInfo(tools().op).accepts : null;
   addFiles(await api().pick_files(accept, multi));
 }
 
@@ -943,7 +1181,7 @@ let previewTimer = null;
 let previewSeq = 0;
 
 function splitOptions() {
-  const p = state.pdf;
+  const p = tools();
   if (p.splitMode === "each") return { every: 1 };
   if (p.splitMode === "every")
     return { every: Math.max(1, parseInt(p.every, 10) || 1) };
@@ -951,14 +1189,14 @@ function splitOptions() {
 }
 
 function resetPreview() {
-  state.pdf.preview = null;
-  state.pdf.selected = new Set();
-  state.pdf.anchor = null;
+  tools().preview = null;
+  tools().selected = new Set();
+  tools().anchor = null;
   previewSeq++; // ответ на прежний запрос больше не нужен
 }
 
 function updatePreview() {
-  const p = state.pdf;
+  const p = tools();
   const box = document.getElementById("preview");
   if (box) {
     box.innerHTML = previewHtml();
@@ -983,7 +1221,7 @@ function updatePreview() {
 
 function schedulePreview(immediate = false) {
   clearTimeout(previewTimer);
-  const p = state.pdf;
+  const p = tools();
   const f = singleFile();
   if (state.tab !== "pdf" || p.op !== "split" || !f) return;
   if (p.splitMode === "ranges" && !p.ranges.trim()) {
@@ -1024,18 +1262,46 @@ async function runConvert() {
   if (c.busy) return;
   c.busy = true;
   c.error = null;
+  c.status = {};
   render();
-  const r = await callApi(() =>
-    api().convert(c.file.path, c.target, {}, ...outArgs(c)),
-  );
+
+  if (c.files.length === 1) {
+    const r = await callApi(() =>
+      api().convert(c.files[0].path, c.target, {}, ...outArgs(c)),
+    );
+    c.busy = false;
+    c.finished = Boolean(r.ok);
+    if (r.ok) c.result = r;
+    else c.error = r.error;
+    render("[data-act='reveal']");
+    return;
+  }
+
+  // Партия: файлы по очереди, чтобы видеть, какой готов. Ошибка одного не останавливает остальные
+  const outputs = [];
+  let folderName = "";
+  for (const f of c.files) {
+    c.status[f.path] = { state: "run" };
+    render();
+    const r = await callApi(() =>
+      api().convert(f.path, c.target, {}, c.outDir ? c.outDir.path : null, ""),
+    );
+    if (r.ok) {
+      c.status[f.path] = { state: "ok", outs: r.outputs };
+      outputs.push(...r.outputs);
+      folderName = r.folder_name;
+    } else {
+      c.status[f.path] = { state: "error", text: r.error };
+    }
+  }
   c.busy = false;
-  if (r.ok) c.result = r;
-  else c.error = r.error;
+  c.finished = true;
+  c.result = outputs.length ? { outputs, folder_name: folderName } : null;
   render("[data-act='reveal']");
 }
 
 async function runPdf() {
-  const p = state.pdf;
+  const p = tools();
   if (p.busy) return;
   p.busy = true;
   p.error = null;
@@ -1059,6 +1325,16 @@ async function runPdf() {
         ...outArgs(p),
       ),
     );
+  } else if (p.op === "shrink") {
+    const preset = SHRINK_PRESETS.find((x) => x.id === p.shrink);
+    r = await callApi(() =>
+      api().run_tool(
+        "shrink",
+        [singleFile().path],
+        { max_side: preset.max_side, quality: preset.quality },
+        ...outArgs(p),
+      ),
+    );
   } else {
     r = await callApi(() =>
       api().run_tool(
@@ -1076,8 +1352,7 @@ async function runPdf() {
 }
 
 function reveal() {
-  const result =
-    state.tab === "convert" ? state.convert.result : state.pdf.result;
+  const result = currentOut().result;
   if (result && result.outputs.length) api().reveal(result.outputs[0].path);
 }
 
@@ -1116,22 +1391,22 @@ const ACTIONS = {
   },
   "convert-run": () => runConvert(),
   "convert-reset": () => {
-    state.convert = {
-      file: null,
-      target: null,
-      busy: false,
-      result: null,
-      error: null,
-      hint: null,
-      outName: "",
-      outDir: state.convert.outDir,
-    };
+    state.convert = newConvertState(state.convert.outDir);
     render();
   },
-
+  "convert-remove": (el) => {
+    const c = state.convert;
+    c.files = c.files.filter((f) => f.path !== el.dataset.v);
+    if (!c.files.length) {
+      state.convert = newConvertState(c.outDir);
+    } else if (!commonTargets(c.files).include(c.target)) {
+      c.target = commonTargets(c.files)[0];
+    }
+    render();
+  },
   // PDF
   "set-op": (el) => {
-    const p = state.pdf;
+    const p = tools();
     p.op = el.dataset.v;
     p.outName = "";
     p.result = null;
@@ -1142,7 +1417,7 @@ const ACTIONS = {
     schedulePreview(true);
   },
   "remove-file": (el) => {
-    const p = state.pdf;
+    const p = tools();
     p.files = p.files.filter((f) => f.path !== el.dataset.v);
     p.result = null;
     p.error = null;
@@ -1151,7 +1426,7 @@ const ACTIONS = {
     schedulePreview(true);
   },
   "split-mode": (el) => {
-    const p = state.pdf;
+    const p = tools();
     p.splitMode = el.dataset.v;
     p.error = null;
     resetPreview();
@@ -1159,7 +1434,7 @@ const ACTIONS = {
     schedulePreview(true);
   },
   "toggle-page": (el, e) => {
-    const p = state.pdf;
+    const p = tools();
     const n = Number(el.dataset.v);
     if (e.shiftKey && p.anchor) {
       const [a, b] = [Math.min(p.anchor, n), Math.max(p.anchor, n)];
@@ -1177,19 +1452,26 @@ const ACTIONS = {
     schedulePreview(true);
   },
   "set-level": (el) => {
-    const p = state.pdf;
+    const p = tools();
     p.level = el.dataset.v;
+    p.result = null;
+    p.error = null;
+    render();
+  },
+  "set-shrink": (el) => {
+    const p = tools();
+    p.shrink = el.dataset.v;
     p.result = null;
     p.error = null;
     render();
   },
   run: () => runPdf(),
   "result-again": () => {
-    state.pdf.result = null;
+    tools().result = null;
     render();
   },
   "pdf-reset": () => {
-    Object.assign(state.pdf, {
+    Object.assign(tools(), {
       files: [],
       result: null,
       error: null,
@@ -1249,19 +1531,19 @@ document.addEventListener("keydown", (e) => {
   const handle = e.target.closest && e.target.closest("[data-act='handle']");
   if (handle && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
     e.preventDefault();
-    const files = state.pdf.files;
+    const files = tools().files;
     const i = Number(handle.dataset.i);
     const j = e.key === "ArrowUp" ? i - 1 : i + 1;
     if (j < 0 || j >= files.length) return;
     [files[i], files[j]] = [files[j], files[i]];
-    state.pdf.result = null;
+    tools().result = null;
     render(`[data-act="handle"][data-i="${j}"]`);
   }
 });
 
 // поля ввода: перерисовывать все окно на каждую букву нельзя (пропадет фокус), обновляем только предпросмотр
 app.addEventListener("input", (e) => {
-  const p = state.pdf;
+  const p = tools();
   if (e.target.id === "ranges") {
     p.ranges = e.target.value;
     p.error = null;
@@ -1279,7 +1561,7 @@ app.addEventListener("input", (e) => {
       const name = document.querySelector(".card.target .name");
       if (name)
         name.innerHTML = nameHtml(
-          (s.outName.trim() || stem(s.file.name)) + s.target,
+          (s.outName.trim() || stem(s.files[0].name)) + s.target,
         );
     } else {
       schedulePreview();
@@ -1315,7 +1597,7 @@ document.addEventListener("pointerdown", (e) => {
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", finish);
     window.removeEventListener("pointercancel", finish);
-    const p = state.pdf;
+    const p = tools();
     const order = [...list.children].map((r) => Number(r.dataset.i));
     p.files = order.map((i) => p.files[i]);
     p.result = null;
