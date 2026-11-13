@@ -143,7 +143,7 @@ WRITERS = {
 
 # ---------- уменьшение фото ----------
 
-# PNG и WebP остаются собой, всё остальное (JPEG, HEIC, BMP, TIFF, GIF) при уменьшении становится JPEG
+# PNG и WebP остаются собой, все остальное (JPEG, HEIC, BMP, TIFF, GIF) при уменьшении становится JPEG
 _SHRINK_KEEP = {".png": ".png", ".webp": ".webp"}
 # Эти расширения означают один и тот же формат (нужно, чтобы понять "формат не поменялся")
 _SAME_FORMAT = {".jpeg": ".jpg", ".tif": ".tiff"}
@@ -170,7 +170,7 @@ def shrink(sources, output, options):
 
     [result] = WRITERS[target.suffix.lower()](img, target, options)
 
-    # Размер не менялся, формат тот же, а файл вышел не легче: отдаём оригинал как есть
+    # Размер не менялся, формат тот же, а файл вышел не легче: отдаем оригинал как есть
     same_format = (
         _SAME_FORMAT.get(src.suffix.lower(), src.suffix.lower())
         == result.suffix.lower()

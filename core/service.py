@@ -32,7 +32,7 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     "background": "white",
     "level": "medium",
 }
-ALLOWED_OPTIONS = set(DEFAULT_OPTIONS) | {"ranges", "every", "max_side"}
+ALLOWED_OPTIONS = set(DEFAULT_OPTIONS) | {"ranges", "every", "max_side", "pages"}
 
 TABLE_EXTS = {".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".json"}
 
@@ -131,7 +131,12 @@ def dialog_filters(accept: list[str] | None) -> tuple[str, ...]:
 
 
 # ---------- действия ----------
-DEFAULT_SUFFIX = {"merge": "_merged", "compress": "_compressed", "shrink": "_small"}
+DEFAULT_SUFFIX = {
+    "merge": "_merged",
+    "compress": "_compressed",
+    "shrink": "_small",
+    "organize": "_edited",
+}
 
 
 def describe_folder(path: str) -> dict:

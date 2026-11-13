@@ -11,6 +11,7 @@ function newToolState(op) {
     hint: null,
     level: "medium",
     shrink: "medium",
+    order: null,
     splitMode: "ranges", // each | ranges | every
     ranges: "",
     every: 2,
@@ -154,6 +155,8 @@ const ICONS = {
   split:
     '<path d="M12 3v7M12 10c0 3-5 3-5 7v4M12 10c0 3 5 3 5 7v4M4 18l3 3 3-3M14 18l3 3 3-3"/>',
   compress: '<path d="M12 3v6M9 6l3 3 3-3M12 21v-6M9 18l3-3 3 3M5 12h14"/>',
+  organize:
+    '<rect x="4" y="3" width="7" height="9" rx="1.2"/><rect x="13" y="12" width="7" height="9" rx="1.2"/><path d="M14 7h6M17 4l3 3-3 3"/>',
   shrink:
     '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/>',
 };
@@ -202,6 +205,7 @@ const OP_META = {
   merge: { title: "Объединить", desc: "Склеить в один PDF" },
   split: { title: "Разделить", desc: "Разбить на части" },
   compress: { title: "Сжать", desc: "Уменьшить размер" },
+  organize: { title: "Страница", desc: "Править страницы" },
   shrink: { title: "Фото", desc: "Уменьшить снимок" },
 };
 
@@ -293,7 +297,23 @@ const ICON_SIZE = { sm: 26, md: 36, lg: 60 };
 function thumb(f, size = "sm") {
   const key = thumbKey(f);
   const url = THUMBS[key];
-  return `<span class="thumb ${size}" data-thumb="${esc(key)}" data-path="${esc(f.path)}" data-page="${f.page || 0}" ${url ? "" : "data-lazy"}>${url ? `<img src="${url}" alt="">` : fileIcon(f.ext, ICON_SIZE[size])}</span>`;
+  return `<span class="thumb ${size}" data-thumb="${esc(key)}" data-path="${esc(f.path)}" data-page="${f.page || 0}" data-rot="${f.rot || 0}" ${url ? "" : "data-lazy"}>${url ? `<img src="${url}" alt="">` : fileIcon(f.ext, ICON_SIZE[size])}</span>`;
+}
+
+// поворот миниаюотры на экране
+function fitRot(el) {
+  const img = el.querySelector("img");
+  if (!img) return;
+  const rot = Number(el.dataset.rot || 0);
+  const turned = rot % 180 !== 0;
+  const k = turned
+    ? Math.min(
+        1,
+        el.clientWidth / img.offsetHeight,
+        el.clientHeight / img.offsetWidth,
+      )
+    : 1;
+  img.style.transform = rot ? `rotate(${rot}deg) scale(${k})` : "";
 }
 
 // Подгружает миниатюры по одной и вставляет в уже нарисованные места без перерисовки окна
@@ -305,9 +325,12 @@ async function loadThumbs(files) {
     const r = await callApi(() => api().thumbnail(f.path, f.page || 0, 160));
     if (!r.ok) continue;
     THUMBS[key] = r.data;
-    for (const el of document.querySelectorAll("[data-thumb]"))
-      if (el.dataset.thumb === key)
+    for (const el of document.querySelectorAll("[data-thumb]")) {
+      if (el.dataset.thumb === key) {
         el.innerHTML = `<img src="${r.data}" alt="">`;
+        fitRot(el);
+      }
+    }
   }
 }
 
@@ -358,6 +381,21 @@ function hideZoom() {
   if (el) el.hidden = true;
 }
 
+// Копия картинки, повёрнутая на rot градусов (кратно 90)
+function rotatedCopy(img, rot) {
+  const turned = rot % 180 !== 0;
+  const canvas = document.createElement("canvas");
+  canvas.width = turned ? img.naturalHeight : img.naturalWidth;
+  canvas.height = turned ? img.naturalWidth : img.naturalHeight;
+  const g = canvas.getContext("2d");
+  g.translate(canvas.width / 2, canvas.height / 2);
+  g.rotate((rot * Math.PI) / 180);
+  g.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+  const copy = new Image();
+  copy.src = canvas.toDataURL("image/jpeg", 0.9);
+  return copy;
+}
+
 async function showZoom(target) {
   const key = target.dataset.thumb;
   if (!THUMBS[key]) return; // нет даже маленькой миниатюры: увеличивать нечего
@@ -366,10 +404,12 @@ async function showZoom(target) {
     api().thumbnail(target.dataset.path, Number(target.dataset.page), 360),
   ).then((r) => (r.ok ? r.data : ""));
   const url = await BIG[key];
-  if (!url || zoomFor !== key) return; // пока грузилось, курсор ушёл
-  const img = new Image();
+  if (!url || zoomFor !== key) return; // пока грузилось, курсор ушел
+  let img = new Image();
   img.src = url;
   await img.decode();
+  const rot = Number(target.dataset.rot || 0);
+  if (rot) img = rotatedCopy(img, rot);
   if (zoomFor !== key) return;
   const box = zoomBox();
   box.replaceChildren(img);
@@ -402,7 +442,7 @@ document.addEventListener("pointerdown", hideZoom);
 const sumSize = (files) =>
   formatSize(files.reduce((acc, f) => acc + f.size, 0));
 
-// Строка "Имя + папка" для экранов, где результат ещё не создан. s: state.convert или tools()
+// Строка "Имя + папка" для экранов, где результат еще не создан. s: state.convert или tools()
 function outRow(s, defaultStem, ext, withName = true) {
   const where = s.outDir ? s.outDir.name : "Рядом с исходным";
   const tip = s.outDir
@@ -503,7 +543,7 @@ function viewConvertBatch(c) {
         <div class="${ok === n ? "status-ok" : "error"}" role="status">${summary}</div>
         <div class="btns">
           ${ok ? `<button type="button" class="btn" data-act="reveal">Показать в папке</button>` : ""}
-          <button type="button" class="btn ghost" data-act="convert-reset">Конвертировать ещё</button>
+          <button type="button" class="btn ghost" data-act="convert-reset">Конвертировать еще</button>
         </div>
       </div>`;
   } else {
@@ -572,7 +612,7 @@ function viewConvertOne(c) {
     const n = done.outputs.length;
     actions = `
       <div class="actions">
-        <div class="status-ok" role="status">${n === 1 ? `Готово. Файл сохранён в папку «${esc(done.folder_name)}»` : `Готово. Создано ${n} ${plural(n, ["файл", "файла", "файлов"])} в папке «${esc(done.folder_name)}»`}</div>
+        <div class="status-ok" role="status">${n === 1 ? `Готово. Файл сохранен в папку «${esc(done.folder_name)}»` : `Готово. Создано ${n} ${plural(n, ["файл", "файла", "файлов"])} в папке «${esc(done.folder_name)}»`}</div>
         <div class="btns">
           <button type="button" class="btn" data-act="reveal">Показать в папке</button>
           <button type="button" class="btn ghost" data-act="convert-reset">Конвертировать еще</button>
@@ -648,6 +688,7 @@ function opsBig() {
     "merge",
     "split",
     "compress",
+    "organize",
   ]
     .map(
       (id) => `
@@ -665,6 +706,7 @@ function opsCompact() {
     "merge",
     "split",
     "compress",
+    "organize",
   ]
     .map(
       (id) => `
@@ -752,44 +794,12 @@ function viewMerge() {
     </div>`;
 }
 
-function previewHtml() {
-  const p = tools();
-  const r = p.preview;
-  if (!r) {
-    return `<div class="field"><span class="hint">${
-      p.splitMode === "ranges"
-        ? "Введите диапазоны или отметьте страницы ниже"
-        : "Предпросмотр появится здесь"
-    }</span></div>`;
-  }
-  if (!r.ok)
-    return `<div class="error left" role="alert">${esc(r.error)}</div>`;
+function splitNote() {
+  const r = tools().preview;
+  if (!r) return "";
+  if (!r.ok) return `<span class="err" role="alert">${esc(r.error)}</span>`;
   const n = r.parts.length;
-  const src = singleFile();
-  if (p.splitMode === "ranges") {
-    // в этом режиме итог видно по сетке страниц, а здесь только краткая сводка
-    const labels = r.parts.map((x) =>
-      x.first === x.last ? `стр. ${x.first}` : `стр. ${x.first}–${x.last}`,
-    );
-    return `
-      <div class="field">
-        <div class="head"><label>Получится: ${n} ${plural(n, ["файл", "файла", "файлов"])}</label></div>
-        <div class="hint">${esc(labels.join(" · "))}</div>
-      </div>`;
-  }
-  return `
-    <div class="field">
-      <div class="head"><label>Получится: ${n} ${plural(n, ["файл", "файла", "файлов"])}</label></div>
-      <div class="gallery compact">${r.parts
-        .map(
-          (x) => `
-        <div class="out-tile" title="${esc(x.name)}">
-          ${thumb({ path: src.path, page: x.first - 1, ext: ".pdf" }, "md")}
-          <span class="nm">${x.first === x.last ? `стр. ${x.first}` : `стр. ${x.first}–${x.last}`}</span>
-        </div>`,
-        )
-        .join("")}</div>
-    </div>`;
+  return `Получится: ${n} ${plural(n, ["файл", "файла", "файлов"])}`;
 }
 
 // [1, 2, 3, 5, 10] -> "1-3, 5, 10"
@@ -806,14 +816,41 @@ function pagesToRanges(pages) {
   return out.join(", ");
 }
 
-// Сетка всех страниц документа: клик отмечает страницу, Shift+клик отмечает диапазон
-function pageGrid(f) {
+// Сетка всех страниц документа. В режиме диапазонов клик отмечает страницу (Shift+клик отмечает диапазон),
+// в остальных режимах плитки только показывают, где пройдут разрезы
+function pageGrid(f, selectable) {
   const tiles = Array.from({ length: f.pages || 0 }, (_, i) => {
     const n = i + 1;
-    const on = tools().selected.has(n);
-    return `<button type="button" class="pg ${on ? "on" : ""}" data-act="toggle-page" data-v="${n}" aria-pressed="${on}" aria-label="Страница ${n}">${thumb({ path: f.path, page: i, ext: ".pdf" }, "md")}<span class="n">${n}</span></button>`;
+    const on = selectable && tools().selected.has(n);
+    const act = selectable ? `data-act="toggle-page"` : "";
+    return `<button type="button" class="pg ${on ? "on" : ""}" ${act} data-v="${n}" aria-pressed="${on}" aria-label="Страница ${n}">${thumb({ path: f.path, page: i, ext: ".pdf" }, "md")}<span class="n">${n}</span></button>`;
   }).join("");
   return `<div id="pagegrid" class="pagegrid">${tiles}</div>`;
+}
+
+// Разрезы на сетке: полоска слева у первой страницы каждой части, а в режиме "по N" части ещё и чередуются по цвету
+function syncCuts() {
+  const p = tools();
+  const grid = document.getElementById("pagegrid");
+  if (!grid || p.op !== "split") return;
+  const parts = p.preview && p.preview.ok ? p.preview.parts : [];
+  const partOf = new Map();
+  parts.forEach((x, idx) => {
+    for (let n = x.first; n <= x.last; n++) partOf.set(n, idx);
+  });
+  const starts = new Set(parts.map((x) => x.first));
+  for (const el of grid.querySelectorAll(".pg")) {
+    const n = Number(el.dataset.v);
+    el.classList.toggle("cut", starts.has(n) && n > 1);
+    el.classList.toggle(
+      "pa",
+      p.splitMode === "every" && partOf.has(n) && partOf.get(n) % 2 === 0,
+    );
+    el.classList.toggle(
+      "pb",
+      p.splitMode === "every" && partOf.has(n) && partOf.get(n) % 2 === 1,
+    );
+  }
 }
 
 // Подсветка сетки по состоянию p.selected (без перерисовки: иначе сбросится прокрутка)
@@ -826,6 +863,119 @@ function syncGrid() {
   }
 }
 
+// ---------- Организатор страниц --------
+const ROT_LEFT = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6V2.5M3 6h3.5M3.4 6A5.5 5.5 0 1 1 2.6 9.5"/></svg>`;
+const ROT_RIGHT = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 6V2.5M13 6H9.5M12.6 6A5.5 5.5 0 1 0 13.4 9.5"/></svg>`;
+
+// p.order: страницы результата в нужном порядке. Сначала все страницы по порядку; удаление убирает их из списка
+function ensureOrder(f) {
+  const p = tools();
+  if (!p.order)
+    p.order = Array.from({ length: f.pages || 0 }, (_, i) => ({
+      page: i + 1,
+      rotate: 0,
+    }));
+  return p.order;
+}
+
+const orgChanged = (f) => {
+  const order = tools().order || [];
+  return (
+    order.length !== f.pages ||
+    order.some((x, i) => x.page !== i + 1 || x.rotate)
+  );
+};
+
+function orgTiles(f) {
+  const p = tools();
+  return ensureOrder(f)
+    .map((x, i) => {
+      const on = p.selected.has(x.page);
+      const title =
+        x.page === i + 1
+          ? `Страница ${i + 1}`
+          : `Страница ${i + 1} (была ${x.page})`;
+      return `<button type="button" class="pg ${on ? "on" : ""}" data-act="org-toggle" data-v="${x.page}" aria-pressed="${on}" aria-label="${title}" title="${title}">${thumb({ path: f.path, page: x.page - 1, ext: ".pdf", rot: x.rotate }, "md")}<span class="n">${i + 1}</span></button>`;
+    })
+    .join("");
+}
+
+function viewOrganize(f) {
+  const p = tools();
+  ensureOrder(f);
+  return `
+    ${singleRow(f)}
+    <div class="org-bar">
+      <span class="org-sum" id="org-sum"></span>
+      <button type="button" class="btn ghost small" id="org-all" data-act="org-all"></button>
+      <button type="button" class="btn ghost small icon" id="org-left" data-act="org-rotate" data-v="-90" aria-label="Повернуть выбранные влево" title="Повернуть влево">${ROT_LEFT}</button>
+      <button type="button" class="btn ghost small icon" id="org-right" data-act="org-rotate" data-v="90" aria-label="Повернуть выбранные вправо" title="Повернуть вправо">${ROT_RIGHT}</button>
+      <button type="button" class="btn ghost small danger" id="org-delete" data-act="org-delete">Удалить</button>
+      <button type="button" class="btn ghost small" id="org-reset" data-act="org-reset">Вернуть все</button>
+    </div>
+    <div id="pagegrid" class="pagegrid">${orgTiles(f)}</div>
+    ${p.error ? `<div class="error left" role="alert">${esc(p.error)}</div>` : ""}
+    ${outRow(p, `${stem(f.name)}_edited`, ".pdf")}
+    <div class="footer">
+      <div class="note">Исходный файл не изменится</div>
+      <button type="button" class="btn" id="run" data-act="run">${p.busy ? spinnerLabel("Сохраняем…") : "Сохранить"}</button>
+    </div>`;
+}
+
+// Счетчики, подписи и доступность кнопок организатора (без перерисовки окна: иначе сбросится прокрутка сетки)
+function syncOrgBar() {
+  const p = tools();
+  const f = singleFile();
+  if (p.op !== "organize" || !f || !p.order) return;
+  const k = p.selected.size;
+  const all = k === p.order.length && k > 0;
+  const set = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) fn(el);
+  };
+  set(
+    "org-sum",
+    (el) =>
+      (el.textContent = `Страниц: ${p.order.length} из ${f.pages}${k ? ` · выбрано ${k}` : ""}`),
+  );
+  set(
+    "org-all",
+    (el) => (el.textContent = all ? "Снять выбор" : "Выбрать все"),
+  );
+  for (const id of ["org-left", "org-right"])
+    set(id, (el) => (el.disabled = !k));
+  for (const tile of document.querySelectorAll("#pagegrid .thumb")) {
+    // поворот у каждой плитки берём из списка: его мог изменить поворот, удаление или «Вернуть всё»
+    const item = p.order.find(
+      (x) => x.page === Number(tile.closest(".pg").dataset.v),
+    );
+    tile.dataset.rot = item ? item.rotate : 0;
+    fitRot(tile); // повторный вызов безопасен: результат зависит только от размера картинки и поворота
+  }
+  set("org-delete", (el) => {
+    el.disabled = !k || k === p.order.length; // нельзя удалить все страницы
+    el.textContent = k ? `Удалить (${k})` : "Удалить";
+  });
+  set("org-reset", (el) => (el.hidden = !orgChanged(f)));
+  set(
+    "run",
+    (el) => (el.disabled = p.busy || !p.order.length || !orgChanged(f)),
+  );
+  syncGrid();
+}
+
+// Структура списка изменилась (удалили страницы): пересобираем плитки, сохраняя прокрутку
+function rebuildOrg() {
+  const grid = document.getElementById("pagegrid");
+  const f = singleFile();
+  if (!grid || !f) return render();
+  const top = grid.scrollTop;
+  grid.innerHTML = orgTiles(f);
+  grid.scrollTop = top;
+  observeThumbs(grid);
+  syncOrgBar();
+}
+
 function viewSplit(f) {
   const p = tools();
   const modes = [
@@ -835,37 +985,27 @@ function viewSplit(f) {
   ];
   let input = "";
   if (p.splitMode === "ranges") {
-    input = `
-      <div class="field">
-        <div class="head">
-          <label for="ranges">Диапазоны страниц</label>
-          <span class="hint">Пустой конец означает «до конца» (11-)</span>
-        </div>
-        <input id="ranges" class="input" type="text" value="${esc(p.ranges)}" placeholder="1-3, 5, 11-" autocomplete="off" spellcheck="false">
-      </div>`;
+    input = `<input id="ranges" class="input" type="text" value="${esc(p.ranges)}" placeholder="1-3, 5, 11-" title="Пустой конец означает «до конца»: 11-" aria-label="Диапазоны страниц" autocomplete="off" spellcheck="false">`;
   } else if (p.splitMode === "every") {
-    input = `
-      <div class="field">
-        <div class="head"><label for="every">Страниц в каждой части</label></div>
-        <input id="every" class="input short" type="number" min="1" value="${esc(p.every)}">
-      </div>`;
+    input = `<input id="every" class="input short" type="number" min="1" value="${esc(p.every)}" aria-label="Страниц в каждой части">`;
   }
   const ok = p.preview && p.preview.ok;
   return `
     ${singleRow(f)}
-    <div class="seg small" role="radiogroup" aria-label="Как разделить">${modes
-      .map(
-        ([id, label]) =>
-          `<button type="button" role="radio" aria-checked="${p.splitMode === id}" data-act="split-mode" data-v="${id}">${label}</button>`,
-      )
-      .join("")}</div>
-    ${input}
-    <div id="preview" style="overflow:auto;min-height:0;flex:${p.splitMode === "ranges" ? "0 0 auto" : "1 1 auto"}">${previewHtml()}</div>
-    ${p.splitMode === "ranges" && f.pages ? pageGrid(f) : ""}
+    <div class="split-bar">
+      <div class="seg small" role="radiogroup" aria-label="Как разделить">${modes
+        .map(
+          ([id, label]) =>
+            `<button type="button" role="radio" aria-checked="${p.splitMode === id}" data-act="split-mode" data-v="${id}">${label}</button>`,
+        )
+        .join("")}</div>
+      ${input}
+    </div>
+    ${pageGrid(f, p.splitMode === "ranges")}
     ${p.error ? `<div class="error left" role="alert">${esc(p.error)}</div>` : ""}
     ${outRow(p, stem(f.name), ".pdf")}
     <div class="footer">
-      <div class="note">К имени добавится номер страницы</div>
+      <div class="note" id="splitnote">${splitNote()}</div>
       <button type="button" class="btn" id="run" data-act="run" ${ok && !p.busy ? "" : "disabled"}>${p.busy ? spinnerLabel("Делим…") : "Разделить"}</button>
     </div>`;
 }
@@ -952,7 +1092,7 @@ function viewShrink(f) {
           <span class="pct">−${r.saved_percent}%</span>
         </div>
         <div class="bar"><i style="width:${ratio}%"></i></div>
-        <div class="note">${esc(f.dims || "")}${f.dims && out.dims ? " → " : ""}${esc(out.dims || "")}${r.saved_percent === 0 ? " · Файл и так лёгкий: оставили как есть" : ""}</div>
+        <div class="note">${esc(f.dims || "")}${f.dims && out.dims ? " → " : ""}${esc(out.dims || "")}${r.saved_percent === 0 ? " · Файл и так легкий: оставили как есть" : ""}</div>
       </div>`;
   }
 
@@ -1014,6 +1154,8 @@ function viewPdf() {
   const f = singleFile();
   if (!f) return head + pdfDropZone("Для этой операции нужен PDF-файл");
   if (p.op === "compress") return head + viewCompress(f);
+  if (p.op === "organize")
+    return head + (p.result ? viewDoneList() : viewOrganize(f));
   return head + (p.result ? viewDoneList() : viewSplit(f));
 }
 
@@ -1071,7 +1213,8 @@ function render(focusKey) {
     document.getElementById("preview") ||
     document.querySelector(".done-box .gallery");
   if (lazyRoot) observeThumbs(lazyRoot);
-
+  syncCuts();
+  syncOrgBar();
   if (key) {
     const target = app.querySelector(key);
     if (target) target.focus({ preventScroll: true });
@@ -1192,16 +1335,14 @@ function resetPreview() {
   tools().preview = null;
   tools().selected = new Set();
   tools().anchor = null;
+  tools().order = null;
   previewSeq++; // ответ на прежний запрос больше не нужен
 }
 
 function updatePreview() {
   const p = tools();
-  const box = document.getElementById("preview");
-  if (box) {
-    box.innerHTML = previewHtml();
-    observeThumbs(document.getElementById("pagegrid") || box);
-  }
+  const note = document.getElementById("splitnote");
+  if (note) note.innerHTML = splitNote();
   if (p.splitMode === "ranges") {
     // выделение в сетке следует за текстом в поле: пустое поле снимает всё, верный текст отмечает его страницы
     if (!p.ranges.trim()) p.selected = new Set();
@@ -1214,6 +1355,7 @@ function updatePreview() {
     }
     syncGrid();
   }
+  syncCuts();
   const run = document.getElementById("run");
   if (run && p.op === "split")
     run.disabled = !(p.preview && p.preview.ok) || p.busy;
@@ -1325,6 +1467,15 @@ async function runPdf() {
         ...outArgs(p),
       ),
     );
+  } else if (p.op === "organize") {
+    r = await callApi(() =>
+      api().run_tool(
+        "organize",
+        [singleFile().path],
+        { pages: p.order },
+        ...outArgs(p),
+      ),
+    );
   } else if (p.op === "shrink") {
     const preset = SHRINK_PRESETS.find((x) => x.id === p.shrink);
     r = await callApi(() =>
@@ -1430,7 +1581,7 @@ const ACTIONS = {
     p.splitMode = el.dataset.v;
     p.error = null;
     resetPreview();
-    render();
+    render(`[data-act="split-mode"][data-v="${p.splitMode}"]`);
     schedulePreview(true);
   },
   "toggle-page": (el, e) => {
@@ -1457,6 +1608,52 @@ const ACTIONS = {
     p.result = null;
     p.error = null;
     render();
+  },
+  "org-toggle": (el, e) => {
+    const p = tools();
+    const n = Number(el.dataset.v);
+    const pos = (page) => p.order.findIndex((x) => x.page === page);
+    if (e.shiftKey && p.anchor && pos(p.anchor) >= 0) {
+      const [a, b] = [pos(p.anchor), pos(n)].sort((x, y) => x - y);
+      for (let i = a; i <= b; i++) p.selected.add(p.order[i].page);
+    } else {
+      if (p.selected.has(n)) p.selected.delete(n);
+      else p.selected.add(n);
+      p.anchor = n;
+    }
+    p.error = null;
+    syncOrgBar();
+  },
+  "org-all": () => {
+    const p = tools();
+    p.selected =
+      p.selected.size === p.order.length
+        ? new Set()
+        : new Set(p.order.map((x) => x.page));
+    p.anchor = null;
+    syncOrgBar();
+  },
+  "org-rotate": (el) => {
+    const p = tools();
+    const turn = Number(el.dataset.v);
+    for (const x of p.order)
+      if (p.selected.has(x.page)) x.rotate = (x.rotate + turn + 360) % 360;
+    syncOrgBar();
+  },
+  "org-delete": () => {
+    const p = tools();
+    if (!p.selected.size || p.selected.size === p.order.length) return;
+    p.order = p.order.filter((x) => !p.selected.has(x.page));
+    p.selected = new Set();
+    p.anchor = null;
+    rebuildOrg();
+  },
+  "org-reset": () => {
+    const p = tools();
+    p.order = null;
+    p.selected = new Set();
+    p.anchor = null;
+    rebuildOrg();
   },
   "set-shrink": (el) => {
     const p = tools();
@@ -1557,7 +1754,7 @@ app.addEventListener("input", (e) => {
     s.outName = e.target.value;
     s.error = null;
     if (state.tab === "convert") {
-      // перерисовывать окно нельзя (пропадёт фокус), поэтому обновляем только имя в карточке
+      // перерисовывать окно нельзя (пропадет фокус), поэтому обновляем только имя в карточке
       const name = document.querySelector(".card.target .name");
       if (name)
         name.innerHTML = nameHtml(

@@ -65,7 +65,7 @@ def compress_pypdf(src: Path, dst: Path) -> None:
     try:
         writer.compress_identical_objects(remove_identicals=True, remove_orphans=True)
     except Exception:
-        pass  # у некоторых PDF (без блока Info) эта чистка в pypdf падает: пропускаем её
+        pass  # у некоторых PDF (без блока Info) эта чистка в pypdf падает: пропускаем ее
     with open(dst, "wb") as f:
         writer.write(f)
 

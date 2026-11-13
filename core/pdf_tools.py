@@ -1,6 +1,7 @@
 """
-Операции над PDF, которые не сводятся к "формат А -> формат В":
-объединение (много файлов -> один), разделение (один -> много), сжатие (один -> один, но меньше).
+Операции над PDF, которые не сводятся к "формат А -> формат Б":
+объединение (много файлов -> один), разделение (один -> много), сжатие (один -> один, но меньше)
+и организатор страниц (один -> один, но с другим набором, порядком и поворотом страниц).
 """
 
 import shutil
@@ -140,7 +141,7 @@ def preview_split(src: Path, options: Options, stem: str | None = None) -> list[
 def split(sources: list[Path], output: Path | None, options: Options) -> list[Path]:
     """Один PDF -> несколько. Опции: ranges='1-3,5,7-' (файл на диапазон) или every=N (файл на N страниц)."""
     src = sources[0]
-    base = output or src  # из base берётся только папка и имя; расширение всегда .pdf
+    base = output or src  # из base берется только папка и имя; расширение всегда .pdf
     overwrite = options.get("overwrite", False)
 
     doc = open_pdf(src)
@@ -217,6 +218,53 @@ def compress(sources: list[Path], output: Path | None, options: Options) -> list
     return [target]
 
 
+# --- организатор страниц ---
+def _parse_pages(raw: Any, total: int) -> list[tuple[int, int]]:
+    """Список странц результата: [{"page": 3, "rotate": 90}, ...] -> [(индекс с нуля, добавочный поворот)]
+    Порядок и состав списка и есть результат: убрали из списка - страница удалена, переставили - поменяна местами.
+    """
+    if not isinstance(raw, list) or not raw:
+        raise ConversionError("Не осталось ни одной страницы")
+    plan = []
+    for item in raw:
+        try:
+            page = int(item["page"])
+            rotate = int(item.get("rotate") or 0)
+        except (TypeError, ValueError, KeyError, AttributeError):
+            raise ConversionError("Список странц составлен неверно") from None
+        if not 1 <= page <= total:
+            raise ConversionError(f"В документе нет страницы {page} (всего {total})")
+        if rotate % 90:
+            raise ConversionError("Поворот возможен только на 90, 180, 270 градусов")
+        plan.append((page - 1, rotate % 360))
+    return plan
+
+
+def organize(sources: list[Path], output: Path | None, options: Options) -> list[Path]:
+    """Один PDF -> один PDF с выбранными страница в нужном порядке с поворотом."""
+    src = sources[0]
+    default = src.with_name(f"{src.stem}_edited.pdf")
+    target = resolve_output(output or default, options.get("overwrite", False))
+
+    doc = open_pdf(src)
+    result = pymupdf.open()
+    try:
+        plan = _parse_pages(options.get("pages"), doc.page_count)
+        for index, rotate in plan:
+            result.insert_pdf(doc, from_page=index, to_page=index)
+            if rotate:
+                page = result[result.page_count - 1]
+                page.set_rotation((page.rotation + rotate) % 360)
+        result.save(target, **SAVE_KWARGS)
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
+    finally:
+        result.close()
+        doc.close()
+    return [target]
+
+
 # --- реестр операций ---
 
 
@@ -235,6 +283,7 @@ OPERATIONS: dict[str, Operation] = {
         Operation("merge", "Объединить", (".pdf", *images.READ_EXTS), True, merge),
         Operation("split", "Разделить", (".pdf",), False, split),
         Operation("compress", "Сжать", (".pdf",), False, compress),
+        Operation("organize", "Страница", (".pdf",), False, organize),
         Operation(
             "shrink", "Уменьшить фото", tuple(images.READ_EXTS), False, images.shrink
         ),

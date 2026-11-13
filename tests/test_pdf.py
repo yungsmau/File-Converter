@@ -136,3 +136,85 @@ def test_unknown_operation_and_wrong_format(tmp_path, make_png):
         run_operation("rotate", [make_png()], {})
     with pytest.raises(ConversionError):
         run_operation("split", [make_png()], {"every": 1})
+
+
+# ---------- организатор страниц ----------
+
+
+def page_texts(path: Path) -> list[str]:
+    doc = pymupdf.open(path)
+    try:
+        return [page.get_text().strip() for page in doc]
+    finally:
+        doc.close()
+
+
+def test_organize_reorders_and_deletes(make_pdf):
+    src = make_pdf("d.pdf", pages=4)
+    pages = [
+        {"page": 3},
+        {"page": 1},
+    ]  # вторую и четвертую убрали, остальные поменяли местами
+    [out] = run_operation("organize", [src], {"pages": pages})
+    assert out.name == "d_edited.pdf"
+    assert page_texts(out) == ["d page 3", "d page 1"]
+
+
+def test_organize_rotates_only_chosen_pages(make_pdf):
+    src = make_pdf("d.pdf", pages=3)
+    [out] = run_operation(
+        "organize",
+        [src],
+        {"pages": [{"page": 1}, {"page": 2, "rotate": 90}, {"page": 3, "rotate": -90}]},
+    )
+    doc = pymupdf.open(out)
+    try:
+        assert [p.rotation for p in doc] == [0, 90, 270]
+    finally:
+        doc.close()
+
+
+def test_organize_adds_rotation_to_existing_one(tmp_path, make_pdf):
+    src = make_pdf("d.pdf", pages=1)
+    doc = pymupdf.open(src)
+    doc[0].set_rotation(90)
+    doc.saveIncr()
+    doc.close()
+    [out] = run_operation("organize", [src], {"pages": [{"page": 1, "rotate": 180}]})
+    result = pymupdf.open(out)
+    try:
+        assert result[0].rotation == 270  # 90 + 180
+    finally:
+        result.close()
+
+
+def test_organize_can_repeat_a_page_with_own_rotation(make_pdf):
+    src = make_pdf("d.pdf", pages=2)
+    [out] = run_operation(
+        "organize", [src], {"pages": [{"page": 2}, {"page": 2, "rotate": 90}]}
+    )
+    doc = pymupdf.open(out)
+    try:
+        assert [p.rotation for p in doc] == [0, 90]
+        assert page_texts(out) == ["d page 2", "d page 2"]
+    finally:
+        doc.close()
+
+
+@pytest.mark.parametrize(
+    "pages, message",
+    [
+        ([], "ни одной страницы"),
+        (None, "ни одной страницы"),
+        ([{"page": 9}], "нет страницы 9"),
+        ([{"page": 0}], "нет страницы 0"),
+        ([{"page": 1, "rotate": 45}], "90, 180, 270"),
+        ([{"nope": 1}], "составлен неверно"),
+        (["1"], "составлен неверно"),
+    ],
+)
+def test_organize_bad_pages(make_pdf, pages, message):
+    src = make_pdf("d.pdf", pages=2)
+    with pytest.raises(ConversionError, match=message):
+        run_operation("organize", [src], {"pages": pages})
+    assert not list(src.parent.glob("*_edited*"))  # неудача не оставляет файлов

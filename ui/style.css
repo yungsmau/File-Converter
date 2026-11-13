@@ -90,8 +90,8 @@ svg { display: block; flex: none; }
 /* ---------- Переключатели ---------- */
 .seg {
   display: flex;
-  gap: 2px;
-  padding: 3px;
+  gap: 4px;
+  padding: 5px;
   background: var(--track);
   border-radius: 12px;
 }
@@ -103,7 +103,7 @@ svg { display: block; flex: none; }
   border-radius: 9px;
   padding: 9px 18px;
   font-size: 14px;
-  font-weight: 550;
+  font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -225,7 +225,7 @@ svg { display: block; flex: none; }
   text-align: center;
 }
 
-/* Имя файла: основа сокращается многоточием, расширение остаётся видно */
+/* Имя файла: основа сокращается многоточием, расширение остается видно */
 .fname { display: flex; min-width: 0; max-width: 100%; }
 .fname .base { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fname .ext { flex: none; white-space: nowrap; }
@@ -530,7 +530,7 @@ body.dragging .add { border-color: var(--accent); background: var(--accent-soft)
 .gallery.compact { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 12px 8px; overflow: visible; }
 
 /* Сетка страниц для выбора */
-.pagegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; overflow-y: auto; min-height: 0; flex: 1 1 auto; padding: 4px 2px; }
+.pagegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; overflow-y: auto; min-height: 0; flex: 1 1 auto; padding: 4px 2px; align-content: start; }
 .pg { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 4px 4px; border: 2px solid transparent; border-radius: 10px; background: transparent; font: inherit; color: inherit; cursor: pointer; }
 .pg:hover { background: var(--chip); }
 .pg.on { border-color: var(--accent); background: var(--accent-soft); }
@@ -544,3 +544,24 @@ body.dragging .add { border-color: var(--accent); background: var(--accent-soft)
 .row .st.ok { color: #fff; background: var(--ok); }
 .row .st.err { color: #fff; background: var(--err); }
 .spinner.dark { border-color: var(--line); border-top-color: var(--accent); flex: none; }
+
+/* Организатор страниц */
+.org-bar { display: flex; align-items: center; gap: 8px; }
+.org-bar .org-sum { flex: 1; min-width: 0; font-size: 13px; font-weight: 650; }
+.btn.danger { color: var(--err); }
+.btn:disabled.danger { color: var(--muted); }
+.org-bar .btn[hidden] { display: none; }
+.btn.icon { padding: 0; width: 36px; }
+.org-bar { flex-wrap: wrap; }
+
+/* Разделение: режимы и поле ввода в одну строку, сетка с разрезами */
+.split-bar { display: flex; align-items: center; gap: 10px; }
+.split-bar .seg { flex: none; }
+.split-bar .seg button { flex: none; padding: 9px 10px; white-space: nowrap; }
+.split-bar .input { flex: 1; min-width: 0; }
+.split-bar .input.short { flex: none; width: 90px; }
+.pg { position: relative; }
+.pg.pa { background: var(--accent-soft); }
+.pg.pb { background: var(--chip); }
+.pg.cut::before { content: ""; position: absolute; left: -6px; top: 6px; bottom: 6px; width: 3px; border-radius: 2px; background: var(--accent); }
+.footer .note .err { color: var(--err); }

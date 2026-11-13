@@ -56,7 +56,7 @@ def test_split_preview_service(make_pdf):
 
 def test_operations_listing():
     ops = {o["id"]: o for o in service.operations()}
-    assert set(ops) == {"merge", "split", "compress", "shrink"}
+    assert set(ops) == {"merge", "split", "compress", "shrink", "organize"}
     assert ops["merge"]["multi"] is True and ".pdf" in ops["split"]["accepts"]
 
 
@@ -76,7 +76,7 @@ def test_convert_with_custom_name_and_folder(make_png, tmp_path):
 
 
 def test_custom_name_is_cleaned(make_png):
-    # расширение, которое человек дописал сам, не удваивается, а запрещённые символы заменяются
+    # расширение, которое человек дописал сам, не удваивается, а запрещенные символы заменяются
     result = service.convert_file(str(make_png()), ".jpg", None, None, "a/b:c.JPG")
     assert Path(result["outputs"][0]["path"]).name == "a_b_c.jpg"
     # пустое имя означает "по умолчанию"
@@ -170,3 +170,21 @@ def test_shrink_through_service(tmp_path):
     named = service.run_tool("shrink", [str(src)], {"max_side": 400}, None, "мини")
     assert named["outputs"][0]["name"] == "мини.jpg"
     assert service.run_tool("shrink", [str(tmp_path / "a.pdf")])["ok"] is False
+
+
+def test_organize_through_service(make_pdf):
+    src = make_pdf("d.pdf", pages=3)
+    result = service.run_tool(
+        "organize", [str(src)], {"pages": [{"page": 3}, {"page": 1, "rotate": 90}]}
+    )
+    assert result["ok"] is True
+    assert (
+        result["outputs"][0]["name"] == "d_edited.pdf"
+        and result["outputs"][0]["pages"] == 2
+    )
+
+    named = service.run_tool(
+        "organize", [str(src)], {"pages": [{"page": 1}]}, None, "один"
+    )
+    assert named["outputs"][0]["name"] == "один.pdf"
+    assert service.run_tool("organize", [str(src)], {"pages": []})["ok"] is False
