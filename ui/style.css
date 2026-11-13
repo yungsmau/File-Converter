@@ -565,3 +565,15 @@ body.dragging .add { border-color: var(--accent); background: var(--accent-soft)
 .pg.pb { background: var(--chip); }
 .pg.cut::before { content: ""; position: absolute; left: -6px; top: 6px; bottom: 6px; width: 3px; border-radius: 2px; background: var(--accent); }
 .footer .note .err { color: var(--err); }
+
+/* Перестановка страниц */
+.pagegrid { padding: 4px 8px; }
+.pagegrid img { -webkit-user-drag: none; user-select: none; }
+#pagegrid .pg[data-act="org-toggle"] { cursor: grab; }
+.pg.lifted { opacity: 0.35; }
+.pg.drop-before::after, .pg.drop-after::after { content: ""; position: absolute; top: 2px; bottom: 2px; width: 4px; border-radius: 2px; background: var(--accent); }
+.pg.drop-before::after { left: -6px; }
+.pg.drop-after::after { right: -6px; }
+.drag-ghost { position: fixed; z-index: 50; pointer-events: none; transform: translate(-50%, -50%) rotate(4deg); filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.3)); }
+.drag-ghost .badge { position: absolute; top: -8px; right: -8px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 650; display: grid; place-items: center; }
+body.page-drag, body.page-drag * { cursor: grabbing !important; user-select: none; }

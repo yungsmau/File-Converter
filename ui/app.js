@@ -430,6 +430,7 @@ async function showZoom(target) {
 }
 
 document.addEventListener("mouseover", (e) => {
+  if (pageDrag && pageDrag.active) return;
   const t = e.target.closest && e.target.closest("[data-thumb]");
   if (t && !t.contains(e.relatedTarget)) showZoom(t);
 });
@@ -1803,6 +1804,178 @@ document.addEventListener("pointerdown", (e) => {
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", finish);
   window.addEventListener("pointercancel", finish);
+});
+
+/* ---------- Перестановка страниц в организаторе ---------- */
+let pageDrag = null; // перетаскивание в процессе: {page, moving, x, y, active, ghost, target, ...}
+let suppressClick = false; // сразу после перетаскивания клик по плитке не должен менять выделение
+
+// Новый порядок страниц: страницы из moving переезжают к странице targetPage (перед ней или после)
+function moveInOrder(order, moving, targetPage, after) {
+  const rest = order.filter((x) => !moving.has(x.page));
+  const moved = order.filter((x) => moving.has(x.page));
+  let at = rest.findIndex((x) => x.page === targetPage);
+  if (at < 0) return order;
+  if (after) at++;
+  return [...rest.slice(0, at), ...moved, ...rest.slice(at)];
+}
+
+document.addEventListener("pointerdown", (e) => {
+  const tile =
+    e.target.closest &&
+    e.target.closest("#pagegrid .pg[data-act='org-toggle']");
+  if (!tile || e.button !== 0 || tools().op !== "organize") return;
+  const p = tools();
+  const page = Number(tile.dataset.v);
+  // за отмеченную страницу едут все отмеченные, за неотмеченную только она сама
+  const moving = p.selected.has(page) ? new Set(p.selected) : new Set([page]);
+  pageDrag = {
+    tile,
+    moving,
+    startX: e.clientX,
+    startY: e.clientY,
+    x: e.clientX,
+    y: e.clientY,
+    active: false,
+    ghost: null,
+    target: null,
+    targetEl: null,
+    raf: 0,
+  };
+  window.addEventListener("pointermove", dragMove);
+  window.addEventListener("pointerup", dragEnd);
+  window.addEventListener("pointercancel", dragCancel);
+});
+
+function dragMove(e) {
+  const d = pageDrag;
+  if (!d) return;
+  d.x = e.clientX;
+  d.y = e.clientY;
+  if (!d.active) {
+    if (Math.hypot(d.x - d.startX, d.y - d.startY) < 6) return; // пока это обычный клик
+    startPageDrag(d);
+  }
+  d.ghost.style.left = `${d.x}px`;
+  d.ghost.style.top = `${d.y}px`;
+  updateDropTarget(d);
+}
+
+function startPageDrag(d) {
+  d.active = true;
+  hideZoom();
+  document.body.classList.add("page-drag");
+  for (const el of document.querySelectorAll("#pagegrid .pg")) {
+    el.classList.toggle("lifted", d.moving.has(Number(el.dataset.v)));
+  }
+  const ghost = document.createElement("div");
+  ghost.className = "drag-ghost";
+  ghost.append(d.tile.querySelector(".thumb").cloneNode(true));
+  if (d.moving.size > 1) {
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = d.moving.size;
+    ghost.append(badge);
+  }
+  document.body.append(ghost);
+  d.ghost = ghost;
+  // у края сетки она сама прокручивается
+  const tick = () => {
+    const grid = document.getElementById("pagegrid");
+    if (grid) {
+      const r = grid.getBoundingClientRect();
+      const edge = 40;
+      let speed = 0;
+      if (d.y < r.top + edge) speed = -Math.min(14, (r.top + edge - d.y) / 3);
+      else if (d.y > r.bottom - edge)
+        speed = Math.min(14, (d.y - (r.bottom - edge)) / 3);
+      if (speed) {
+        grid.scrollTop += speed;
+        updateDropTarget(d); // плитки сдвинулись под курсором
+      }
+    }
+    d.raf = requestAnimationFrame(tick);
+  };
+  d.raf = requestAnimationFrame(tick);
+}
+
+// Куда упадёт страница: берём ближайшую плитку (кроме едущих) и смотрим, слева или справа от её середины курсор
+function updateDropTarget(d) {
+  let best = null;
+  let bestDist = Infinity;
+  for (const el of document.querySelectorAll("#pagegrid .pg")) {
+    if (d.moving.has(Number(el.dataset.v))) continue;
+    const r = el.getBoundingClientRect();
+    // по вертикали строже: сначала выбирается ряд
+    const dist = Math.hypot(
+      d.x - (r.left + r.width / 2),
+      (d.y - (r.top + r.height / 2)) * 2,
+    );
+    if (dist < bestDist) {
+      best = el;
+      bestDist = dist;
+    }
+  }
+  if (d.targetEl) d.targetEl.classList.remove("drop-before", "drop-after");
+  d.targetEl = best;
+  d.target = null;
+  if (!best) return;
+  const r = best.getBoundingClientRect();
+  const after = d.x > r.left + r.width / 2;
+  best.classList.add(after ? "drop-after" : "drop-before");
+  d.target = { page: Number(best.dataset.v), after };
+}
+
+function endPageDrag() {
+  const d = pageDrag;
+  window.removeEventListener("pointermove", dragMove);
+  window.removeEventListener("pointerup", dragEnd);
+  window.removeEventListener("pointercancel", dragCancel);
+  if (d && d.active) {
+    cancelAnimationFrame(d.raf);
+    if (d.ghost) d.ghost.remove();
+    document.body.classList.remove("page-drag");
+    for (const el of document.querySelectorAll("#pagegrid .pg")) {
+      el.classList.remove("lifted", "drop-before", "drop-after");
+    }
+  }
+  pageDrag = null;
+  return d;
+}
+
+function dragEnd() {
+  const d = endPageDrag();
+  if (!d || !d.active) return; // обычный клик: им займётся org-toggle
+  suppressClick = true;
+  setTimeout(() => (suppressClick = false), 0);
+  const p = tools();
+  if (d.target) {
+    p.order = moveInOrder(p.order, d.moving, d.target.page, d.target.after);
+    rebuildOrg();
+  }
+}
+
+function dragCancel() {
+  endPageDrag();
+}
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && pageDrag && pageDrag.active) dragCancel();
+});
+// клик, которым закончилось перетаскивание, до обработчиков действий не доходит
+document.addEventListener(
+  "click",
+  (e) => {
+    if (!suppressClick) return;
+    e.stopPropagation();
+    e.preventDefault();
+    suppressClick = false;
+  },
+  true,
+);
+// браузерное перетаскивание картинки отменило бы наши pointer-события
+document.addEventListener("dragstart", (e) => {
+  if (e.target.closest && e.target.closest("#pagegrid")) e.preventDefault();
 });
 
 /* ---------- Подсветка при перетаскивании файла над окном ---------- */
