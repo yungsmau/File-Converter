@@ -13,7 +13,7 @@ from typing import Any, Callable
 import pymupdf
 from PIL import Image
 
-from core import images
+from core import images, settings
 from core.errors import ConversionError
 from core.pdf_tools import OPERATIONS, preview_split, run_operation
 from core.registry import (
@@ -25,6 +25,7 @@ from core.registry import (
 from core.utils import format_size, safe_name
 
 # что окно вообще имеет право передавать в качестве настроек (все остальное отбрасывается)
+# (delimiter, quality и dpi здесь запасные: в работе их перекрывают сохраненные настройки, см. clean_options)
 DEFAULT_OPTIONS: dict[str, Any] = {
     "delimiter": ";",  # русский Excel открывает CSV только с точкой с запятой
     "quality": 90,
@@ -39,6 +40,7 @@ TABLE_EXTS = {".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".json"}
 
 def clean_options(raw: dict | None) -> dict:
     options = dict(DEFAULT_OPTIONS)
+    options.update(settings.load())
     options.update({k: v for k, v in (raw or {}).items() if k in ALLOWED_OPTIONS})
     options["overwrite"] = False  # из окна существующие файлы не перезаписываем никогда
     return options
@@ -128,6 +130,31 @@ def dialog_filters(accept: list[str] | None) -> tuple[str, ...]:
     """Фильтр для диалога выбора файла: показывает только то, что приложение умеет открывать."""
     exts = sorted(set(accept or all_source_exts()))
     return (f"Поддерживаемые файлы ({';'.join('*' + e for e in exts)})",)
+
+
+# --- настройки ---
+def _settings_reply(values: dict) -> dict:
+    return {
+        "ok": True,
+        "values": values,
+        "choices": {k: list(v) for k, v in settings.CHOICES.items()},
+        "limits": {k: list(v) for k, v in settings.LIMITS.items()},
+    }
+
+
+@_guard
+def get_settings() -> dict:
+    return _settings_reply(settings.load())
+
+
+@_guard
+def save_settings(values: dict | None = None) -> dict:
+    return _settings_reply(settings.save(values or {}))
+
+
+@_guard
+def reset_settings() -> dict:
+    return _settings_reply(settings.reset())
 
 
 # ---------- действия ----------

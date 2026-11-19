@@ -50,6 +50,7 @@ const commonTargets = (files) =>
 const state = {
   tab: "convert", // "convert" | "pdf" | "photo"
   help: false, // открыта ли подсказка по форматам
+  settings: { open: false, values: null, choices: null, limits: null },
   picker: false, // открыт ли выбор формата
   convert: newConvertState(),
   pdf: newToolState("merge"),
@@ -1172,6 +1173,51 @@ function viewHelp() {
     <h3>Что во что можно превратить</h3><dl>${rows}</dl></div>`;
 }
 
+const GEAR = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2.5 5h11M2.5 11h11"/><circle cx="6" cy="5" r="1.9" fill="var(--surface)"/><circle cx="10.5" cy="11" r="1.9" fill="var(--surface)"/></svg>`;
+
+// Панель настроек: изменения сохраняются сразу и действуют на все следующие конвертации
+function viewSettings() {
+  const s = state.settings;
+  if (!s.values) return "";
+  const v = s.values;
+  // значение кладём в data-v как JSON: так числа остаются числами, а Tab не теряется
+  const seg = (key, options, label) =>
+    `<div class="seg small" role="radiogroup" aria-label="${label}">${options
+      .map(
+        ([val, text]) =>
+          `<button type="button" role="radio" aria-checked="${v[key] === val}" data-act="set-setting" data-k="${key}" data-v="${esc(JSON.stringify(val))}">${text}</button>`,
+      )
+      .join("")}</div>`;
+  const [qMin, qMax] = s.limits.quality;
+  return `<div class="popover wide" id="settings" role="dialog" aria-label="Настройки" ${s.open ? "" : "hidden"}>
+    <h3>Настройки</h3>
+    <div class="setting">
+      <div class="lbl">Разделитель в CSV</div>
+      ${seg(
+        "delimiter",
+        s.choices.delimiter.map((d) => [d, d === "\t" ? "Tab" : d]),
+        "Разделитель в CSV",
+      )}
+      <div class="sub">Русский Excel открывает CSV с «;» без лишних действий</div>
+    </div>
+    <div class="setting">
+      <div class="lbl">Качество JPG и WebP <output id="set-quality-val">${v.quality}</output></div>
+      <input id="set-quality" class="range" type="range" min="${qMin}" max="${qMax}" step="1" value="${v.quality}" aria-label="Качество JPG и WebP">
+      <div class="sub">Чем ниже, тем меньше файл. В «Фото» качество задаёт выбранный вариант</div>
+    </div>
+    <div class="setting">
+      <div class="lbl">Разрешение при PDF → картинка</div>
+      ${seg(
+        "dpi",
+        s.choices.dpi.map((d) => [d, String(d)]),
+        "Разрешение в DPI",
+      )}
+      <div class="sub">Больше DPI: чётче и тяжелее файл</div>
+    </div>
+    <div class="setting-foot"><button type="button" class="btn ghost small" data-act="reset-settings">Сбросить настройки</button></div>
+  </div>`;
+}
+
 function focusKeyOf(el) {
   if (!el || !el.dataset) return null;
   if (el.id) return "#" + el.id;
@@ -1203,8 +1249,12 @@ function render(focusKey) {
   app.innerHTML = `
     <div class="topbar">
       <div class="seg" role="tablist">${tabs}</div>
-      <button type="button" class="help-btn" data-act="toggle-help" aria-label="Поддерживаемые форматы" aria-expanded="${state.help}">?</button>
-      ${viewHelp()}
+        <div class="topbtns">
+          <button type="button" class="help-btn" data-act="toggle-settings" aria-label="Настройки" aria-expanded="${state.settings.open}">${GEAR}</button>
+          <button type="button" class="help-btn" data-act="toggle-help" aria-label="Поддерживаемые форматы" aria-expanded="${state.help}">?</button>
+        </div>
+        ${viewHelp()}
+        ${viewSettings()}
     </div>
     <div class="view">${state.tab === "convert" ? viewConvert() : state.tab === "photo" ? viewPhoto() : viewPdf()}</div>
     ${state.picker ? viewPicker() : ""}`;
@@ -1221,6 +1271,25 @@ function render(focusKey) {
     if (target) target.focus({ preventScroll: true });
   }
 }
+
+function applySettings(r) {
+  Object.assign(state.settings, {
+    values: r.values,
+    choices: r.choices,
+    limits: r.limits,
+  });
+}
+
+async function saveSettings(values) {
+  const r = await callApi(() => api().save_settings(values));
+  if (r.ok) return;
+  toast(r.error);
+  const fresh = await callApi(() => api().get_settings());
+  if (fresh.ok) applySettings(fresh);
+  render();
+}
+
+let settingsTimer;
 
 let toastTimer;
 function toast(text) {
@@ -1521,7 +1590,28 @@ const ACTIONS = {
   },
   "toggle-help": () => {
     state.help = !state.help;
+    state.settings.open = false;
     render("[data-act='toggle-help']");
+  },
+  "toggle-settings": () => {
+    state.settings.open = !state.settings.open;
+    state.help = false;
+    render("[data-act='toggle-settings']");
+  },
+  "set-setting": async (el) => {
+    const key = el.dataset.k;
+    const value = JSON.parse(el.dataset.v);
+    state.settings.values[key] = value; // сразу показываем выбор, а сохраняем следом
+    render(
+      `[data-act="set-setting"][data-k="${key}"][data-v="${CSS.escape(el.dataset.v)}"]`,
+    );
+    await saveSettings({ [key]: value });
+  },
+  "reset-settings": async () => {
+    const r = await callApi(() => api().reset_settings());
+    if (r.ok) applySettings(r);
+    else toast(r.error);
+    render("[data-act='reset-settings']");
   },
   pick: () => pickFiles(),
 
@@ -1702,12 +1792,17 @@ function closePicker() {
 
 document.addEventListener("click", (e) => {
   // клик мимо подсказки закрывает ее
-  if (
-    state.help &&
-    !e.target.closest("#help") &&
-    !e.target.closest("[data-act='toggle-help']")
-  ) {
+  const outside = (id, toggle) =>
+    !e.target.closest(id) && !e.target.closest(toggle);
+  if (state.help && outside("#help", "[data-act='toggle-help']")) {
     state.help = false;
+    render();
+  }
+  if (
+    state.settings.open &&
+    outside("#setting", "[data-act='toggle-settings']")
+  ) {
+    state.settings.open = false;
     render();
   }
   const el = e.target.closest("[data-act]");
@@ -1722,6 +1817,9 @@ document.addEventListener("keydown", (e) => {
     else if (state.help) {
       state.help = false;
       render("[data-act='toggle-help']");
+    } else if (state.settings.open) {
+      state.settings.open = false;
+      render("[data-act='toggle-settings']");
     }
     return;
   }
@@ -1750,6 +1848,13 @@ app.addEventListener("input", (e) => {
     p.every = e.target.value;
     p.error = null;
     schedulePreview();
+  } else if (e.target.id == "set-quality") {
+    // перерисовывать нельзя (ползунок потеряет фаоус), поэтому обновляем только число; когда рука осталивалсь
+    const q = Number(e.target.value);
+    state.settings.values.quality = q;
+    document.getElementById("set-quality-val").textContent = q;
+    clearTimeout(settingsTimer);
+    settingsTimer = setTimeout(() => saveSettings({ quality: q }), 300);
   } else if (e.target.id === "outname") {
     const s = currentOut();
     s.outName = e.target.value;
@@ -2001,6 +2106,12 @@ window.addEventListener("drop", (e) => {
 
 /* ---------- Старт ---------- */
 window.addEventListener("pywebviewready", async () => {
-  [OPS, FORMATS] = await Promise.all([api().operations(), api().formats()]);
+  const [ops, formats, settings] = await Promise.all([
+    api().operations(),
+    api().formats(),
+    api().get_settings(),
+  ]);
+  [OPS, FORMATS] = [ops, formats];
+  if (settings.ok) applySettings(settings);
   render();
 });

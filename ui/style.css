@@ -133,7 +133,12 @@ svg { display: block; flex: none; }
   color: var(--muted);
   font-size: 14px;
   font-weight: 600;
+  display: grid;
+  place-items: center;
+  padding: 0;
 }
+
+.help-btn svg { display: block; }
 
 .popover {
   position: absolute;
@@ -577,3 +582,14 @@ body.dragging .add { border-color: var(--accent); background: var(--accent-soft)
 .drag-ghost { position: fixed; z-index: 50; pointer-events: none; transform: translate(-50%, -50%) rotate(4deg); filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.3)); }
 .drag-ghost .badge { position: absolute; top: -8px; right: -8px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 650; display: grid; place-items: center; }
 body.page-drag, body.page-drag * { cursor: grabbing !important; user-select: none; }
+
+/* Панель настроек */
+.topbtns { display: flex; gap: 8px; }
+.popover.wide { width: 380px; }
+.setting { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+.setting .lbl { display: flex; justify-content: space-between; font-weight: 650; }
+.setting .lbl output { color: var(--accent); font-variant-numeric: tabular-nums; }
+.setting .sub { color: var(--muted); font-size: 12px; }
+.setting .seg.small button { padding: 7px 4px; }
+.setting-foot { display: flex; justify-content: flex-end; margin-top: 6px; }
+.range { width: 100%; accent-color: var(--accent); }

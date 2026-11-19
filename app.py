@@ -49,6 +49,15 @@ class Api:
     def reveal(self, path):
         service.reveal_in_folder(path)
 
+    def get_settings(self):
+        return service.get_settings()
+
+    def save_settings(self, values=None):
+        return service.save_settings(values)
+
+    def reset_settings(self):
+        return service.reset_setting()
+
 
 def on_drop(event):
     files = event["dataTransfer"]["files"]

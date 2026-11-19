@@ -3,6 +3,8 @@ import pymupdf
 import pytest
 from PIL import Image
 
+from core import settings
+
 
 @pytest.fixture
 def make_pdf(tmp_path):
@@ -46,3 +48,12 @@ def make_xlsx(tmp_path):
         return path
 
     return make
+
+
+@pytest.fixture(autouse=True)
+def isolated_settings(tmp_path_factory, monkeypatch):
+    """Тесты не читают и не портят настоящие настройки пользователя: у каждого теста свой файл"""
+    path = tmp_path_factory.mktemp("config") / "settings.json"
+    monkeypatch.setattr(settings, "config_path", lambda: path)
+    monkeypatch.setattr(settings, "_cache", None)
+    return path
