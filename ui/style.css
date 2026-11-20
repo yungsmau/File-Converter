@@ -593,3 +593,28 @@ body.page-drag, body.page-drag * { cursor: grabbing !important; user-select: non
 .setting .seg.small button { padding: 7px 4px; }
 .setting-foot { display: flex; justify-content: flex-end; margin-top: 6px; }
 .range { width: 100%; accent-color: var(--accent); }
+
+.update-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid var(--accent, #3b82f6);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent, #3b82f6) 10%, transparent);
+}
+.update-btns {
+  display: flex;
+  gap: 6px;
+}
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent, #3b82f6);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

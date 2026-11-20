@@ -58,6 +58,15 @@ class Api:
     def reset_settings(self):
         return service.reset_setting()
 
+    def check_updates(self, force=False):
+        return service.check_updates(force)
+
+    def skip_update(self, version):
+        return service.skip_update(version)
+
+    def open_release(self, url):
+        return service.open_release(url)
+
 
 def on_drop(event):
     files = event["dataTransfer"]["files"]

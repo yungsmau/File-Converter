@@ -6,6 +6,7 @@ import base64
 import io
 import subprocess
 import sys
+import webbrowser
 from functools import wraps
 from pathlib import Path
 from typing import Any, Callable
@@ -13,7 +14,7 @@ from typing import Any, Callable
 import pymupdf
 from PIL import Image
 
-from core import images, settings
+from core import __version__, images, settings, updates
 from core.errors import ConversionError
 from core.pdf_tools import OPERATIONS, preview_split, run_operation
 from core.registry import (
@@ -40,8 +41,12 @@ TABLE_EXTS = {".xlsx", ".xlsm", ".xls", ".csv", ".tsv", ".json"}
 
 def clean_options(raw: dict | None) -> dict:
     options = dict(DEFAULT_OPTIONS)
-    options.update(settings.load())
-    options.update({k: v for k, v in (raw or {}).items() if k in ALLOWED_OPTIONS})
+    options.update(
+        {k: v for k, v in settings.load().items() if k in settings.CONVERSION_KEYS}
+    )
+    options.update(
+        {k: v for k, v in (raw or {}).items() if k in ALLOWED_OPTIONS}
+    )  # явные опции окна перебивают настройки
     options["overwrite"] = False  # из окна существующие файлы не перезаписываем никогда
     return options
 
@@ -139,6 +144,7 @@ def _settings_reply(values: dict) -> dict:
         "values": values,
         "choices": {k: list(v) for k, v in settings.CHOICES.items()},
         "limits": {k: list(v) for k, v in settings.LIMITS.items()},
+        "version": __version__,
     }
 
 
@@ -310,3 +316,35 @@ def reveal_in_folder(path: str) -> None:
         )  # строкой: список аргументов explorer понимает хуже
     else:
         subprocess.Popen(["xdg-open", str(target.parent)])
+
+
+# ---------- обновления ----------
+
+
+@_guard
+def check_updates(force: bool = False) -> dict:
+    """{'ok': True, 'update': {'version', 'url'} или None}. force: пользователь нажал "Проверить сейчас",
+    поэтому проверяем, даже если проверка выключена или про эту версию уже нажали "Позже".
+    """
+    values = settings.load()
+    if not force and not values["check_updates"]:
+        return {"ok": True, "update": None}
+    update = updates.check()
+    if update and not force and update["version"] == values["skipped_version"]:
+        update = None
+    return {"ok": True, "update": update}
+
+
+@_guard
+def skip_update(version: str) -> dict:
+    settings.save({"skipped_version": version})
+    return {"ok": True}
+
+
+@_guard
+def open_release(url: str) -> dict:
+    """Открывает в браузере страницу релиза. Окно может прислать любую строку, поэтому открываем только наш репозиторий."""
+    if not str(url).startswith(f"https://github.com/{updates.REPO}/"):
+        raise ConversionError("Эту ссылку открыть нельзя")
+    webbrowser.open(url)
+    return {"ok": True}

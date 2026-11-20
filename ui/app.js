@@ -50,7 +50,13 @@ const commonTargets = (files) =>
 const state = {
   tab: "convert", // "convert" | "pdf" | "photo"
   help: false, // открыта ли подсказка по форматам
-  settings: { open: false, values: null, choices: null, limits: null },
+  settings: {
+    open: false,
+    values: null,
+    choices: null,
+    limits: null,
+    version: "",
+  },
   picker: false, // открыт ли выбор формата
   convert: newConvertState(),
   pdf: newToolState("merge"),
@@ -1214,7 +1220,33 @@ function viewSettings() {
       )}
       <div class="sub">Больше DPI: чётче и тяжелее файл</div>
     </div>
+    <div class="setting">
+      <div class="lbl">Проверять обновления при запуске</div>
+      ${seg(
+        "check_updates",
+        [
+          [true, "Вкл"],
+          [false, "Выкл"],
+        ],
+        "Проверять обновления",
+      )}
+      <div class="sub">Версия ${esc(s.version)}.
+        <button type="button" class="link-btn" data-act="check-now">Проверить сейчас</button></div>
+    </div>
     <div class="setting-foot"><button type="button" class="btn ghost small" data-act="reset-settings">Сбросить настройки</button></div>
+  </div>`;
+}
+
+// Баннер о новой версии: показывается над содержимым вкладки, пока пользователь не нажмёт "Позже"
+function viewUpdate() {
+  const u = state.update;
+  if (!u) return "";
+  return `<div class="update-bar" role="status">
+    <span>Вышла версия <b>${esc(u.version)}</b></span>
+    <span class="update-btns">
+      <button type="button" class="btn small" data-act="update-download">Скачать</button>
+      <button type="button" class="btn ghost small" data-act="update-later">Позже</button>
+    </span>
   </div>`;
 }
 
@@ -1256,6 +1288,7 @@ function render(focusKey) {
         ${viewHelp()}
         ${viewSettings()}
     </div>
+    ${viewUpdate()}
     <div class="view">${state.tab === "convert" ? viewConvert() : state.tab === "photo" ? viewPhoto() : viewPdf()}</div>
     ${state.picker ? viewPicker() : ""}`;
 
@@ -1613,6 +1646,27 @@ const ACTIONS = {
     else toast(r.error);
     render("[data-act='reset-settings']");
   },
+  "update-download": async () => {
+    const r = await callApi(() => api().open_release(state.update.url));
+    if (!r.ok) toast(r.error);
+  },
+  "update-later": async () => {
+    const version = state.update.version;
+    state.update = null;
+    render();
+    await callApi(() => api().skip_update(version)); // запомнили: про эту версию больше не напоминаем
+  },
+  "check-now": async () => {
+    const r = await callApi(() => api().check_updates(true));
+    if (!r.ok) return toast(r.error);
+    if (r.update) {
+      state.update = r.update;
+      state.settings.open = false;
+      render();
+    } else {
+      toast("У вас последняя версия");
+    }
+  },
   pick: () => pickFiles(),
 
   // конвертация
@@ -1641,7 +1695,7 @@ const ACTIONS = {
     c.files = c.files.filter((f) => f.path !== el.dataset.v);
     if (!c.files.length) {
       state.convert = newConvertState(c.outDir);
-    } else if (!commonTargets(c.files).include(c.target)) {
+    } else if (!commonTargets(c.files).includes(c.target)) {
       c.target = commonTargets(c.files)[0];
     }
     render();
@@ -2114,4 +2168,10 @@ window.addEventListener("pywebviewready", async () => {
   [OPS, FORMATS] = [ops, formats];
   if (settings.ok) applySettings(settings);
   render();
+  callApi(() => api().check_updates()).then((r) => {
+    if (r.ok && r.update) {
+      state.update = r.update;
+      render();
+    }
+  });
 });

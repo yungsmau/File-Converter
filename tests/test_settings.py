@@ -9,16 +9,25 @@ def test_defaults_when_no_file(isolated_settings):
 
 
 def test_save_and_load_roundtrip(isolated_settings):
-    saved = settings.save({"delimiter": ",", "quality": 70, "dpi": 300})
-    assert saved == {"delimiter": ",", "quality": 70, "dpi": 300}
+    saved = settings.save({"delimiter": ",", "quality": 60, "dpi": 300})
+    assert {k: saved[k] for k in ("delimiter", "quality", "dpi")} == {
+        "delimiter": ",",
+        "quality": 60,
+        "dpi": 300,
+    }
     assert json.loads(isolated_settings.read_text(encoding="utf-8")) == saved
     settings._cache = None  # как после перезапуска приложения
     assert settings.load() == saved
 
 
 def test_save_is_partial(isolated_settings):
-    settings.save({"quality": 60})
-    assert settings.save({"dpi": 72}) == {"delimiter": ";", "quality": 60, "dpi": 72}
+    settings.save({"delimiter": ",", "quality": 60, "dpi": 300})
+    saved = settings.save({"dpi": 72})
+    assert {k: saved[k] for k in ("delimiter", "quality", "dpi")} == {
+        "delimiter": ",",
+        "quality": 60,
+        "dpi": 72,
+    }
 
 
 def test_invalid_values_are_dropped(isolated_settings):

@@ -6,6 +6,7 @@
 
 import json
 import os
+import re
 import sys
 import threading
 from pathlib import Path
@@ -16,9 +17,18 @@ DEFAULTS = {
     "delimiter": ";",  # русский Excel открывает CSV только с точкой с запятой
     "quality": 90,  # JPG и WebP
     "dpi": 150,  # PDF -> картинка
+    "check_updates": True,  # спрашивать GitHub о новой версии при запуске
+    "skipped_version": "",  # версия, про которую нажали "Позже": её баннер больше не показываем
 }
 CHOICES = {"delimiter": (";", ",", "\t"), "dpi": (72, 100, 150, 200, 300)}
 LIMITS = {"quality": (30, 100)}
+CONVERSION_KEYS = (
+    "delimiter",
+    "quality",
+    "dpi",
+)  # эти настройки влияют на конвертацию, остальные касаются самого приложения
+
+_VERSION = re.compile(r"^\d+(\.\d+){0,3}$")
 
 
 def config_path() -> Path:
@@ -32,8 +42,12 @@ def config_path() -> Path:
 
 
 def _is_valid(key: str, value) -> bool:
+    if key == "check_updates":
+        return isinstance(value, bool)
     if isinstance(value, bool):  # True == 1 в Python, но качеством это быть не должно
         return False
+    if key == "skipped_version":
+        return isinstance(value, str) and (value == "" or bool(_VERSION.match(value)))
     if key in CHOICES:
         return value in CHOICES[key]
     if key in LIMITS:
